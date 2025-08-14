@@ -117,26 +117,11 @@ export default class Company extends Model<Company> {
   @Column(DataType.JSONB)
   settings!: CompanySettings;
 
-  @Default('starter')
-  @Column(DataType.STRING(50))
-  plan_type!: string;
-
-  @Column(DataType.STRING(255))
-  billing_email?: string;
-
-  @Default(1000)
-  @Column(DataType.INTEGER)
-  monthly_minutes_limit!: number;
-
-  @Default(500)
-  @Column(DataType.INTEGER)
-  monthly_texts_limit!: number;
-
   @Default(CompanyStatus.ACTIVE)
   @Column({
     type: DataType.ENUM(...Object.values(CompanyStatus)),
     field: 'status'
-  })  
+  })
   status!: CompanyStatus;
 
   @Column(DataType.DATE)
@@ -184,13 +169,36 @@ export default class Company extends Model<Company> {
   @Column(DataType.STRING(50))
   dni_assignment_strategy!: string;
 
+  // Remove billing fields and add usage tracking
+  @Default(0)
+  @Column(DataType.INTEGER)
+  monthly_calls_used!: number;
+
+  @Default(0)
+  @Column(DataType.INTEGER)
+  monthly_texts_used!: number;
+
+  @Column(DataType.DATE)
+  usage_reset_at!: Date;
+
+  // Add method to check usage
+  async checkUsageLimit(type: 'calls' | 'texts'): Promise<boolean> {
+    const account = await Account.findByPk(this.account_id);
+    if (!account) return false;
+
+    const limit = type === 'calls' ? account.monthly_call_limit : account.monthly_text_limit;
+    const used = type === 'calls' ? this.monthly_calls_used : this.monthly_texts_used;
+
+    return used < limit;
+  }
+
   // Helper methods
   generateSipUri(extension: string): string {
     return '14378861145@sip.ringostat.com';
   }
 
   isInTrial(): boolean {
-    return this.status === CompanyStatus.TRIAL && 
-           this.trial_ends_at ? this.trial_ends_at > new Date() : false;
+    return this.status === CompanyStatus.TRIAL &&
+      this.trial_ends_at ? this.trial_ends_at > new Date() : false;
   }
 }

@@ -3,6 +3,7 @@ import { Request, Response } from 'express';
 import jwt, { SignOptions } from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
 import User from '../models/User';
+import Account from '../models/Account';
 import Company from '../models/Company';
 import Tag from '../models/Tag';
 import { AuthRequest } from '../middleware/auth';
@@ -35,200 +36,136 @@ class AuthController {
   /**
    * User login
    */
+// Update login to handle account-level admins
 async login(req: LoginRequest, res: Response): Promise<void> {
-    try {
-      const { email, password, remember_me } = req.body;
-      console.log('Login attempt for:', email);
+  try {
+    const { email, password } = req.body;
 
-      // Find user
-      const user = await User.findOne({ 
-        where: { email },
-        include: [Company]
+    // First check if it's an account-level login
+    const account = await Account.findOne({ 
+      where: { email },
+      include: [Company]
+    });
+
+    if (account && await account.validatePassword(password)) {
+      // Account-level admin login
+      const selectedCompanyId = account.companies?.[0]?.id || null;
+      
+      const token = signToken({
+        id: account.id,
+        email: account.email,
+        role: UserRole.ADMIN,
+        account_id: account.id,
+        company_id: selectedCompanyId
       });
 
-      if (!user) {
-        console.log('User not found:', email);
-        res.status(401).json({ error: 'Invalid credentials' });
-        return;
-      }
+      res.json({
+        token,
+        account: {
+          id: account.id,
+          email: account.email,
+          first_name: account.first_name,
+          last_name: account.last_name,
+          role: UserRole.ADMIN,
+          companies: account.companies
+        }
+      });
+      return;
+    }
 
-      if (!user.is_active) {
-        console.log('User is inactive:', email);
-        res.status(401).json({ error: 'Invalid credentials' });
-        return;
-      }
+    // Then check company-level users
+    const user = await User.findOne({ 
+      where: { email },
+      include: [Company]
+    });
 
-      // Verify password
-      const isValidPassword = await user.validatePassword(password);
-      console.log('Password validation result:', isValidPassword);
-      
-      if (!isValidPassword) {
-        console.log('Invalid password for:', email);
-        res.status(401).json({ error: 'Invalid credentials' });
-        return;
-      }
+    if (!user || !await user.validatePassword(password)) {
+      res.status(401).json({ error: 'Invalid credentials' });
+      return;
+    }
 
-      // Create session with proper parameters
-      const ipAddress = req.ip || req.connection.remoteAddress || '0.0.0.0';
-      const userAgent = req.headers['user-agent'] || 'Unknown';
-      
-      console.log('Creating session for user:', user.id);
-      const sessionResult = await AgentSessionService.createSession(
-        user.id,
-        ipAddress,
-        userAgent
-      );
-      const sessionId = sessionResult.session_id;
-      console.log('Session created:', sessionId);
+    // Company-level user login
+    const token = signToken({
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      account_id: user.account_id,
+      company_id: user.company_id,
+    });
 
-      // Generate token using the jwt config function
-      const tokenExpiry = remember_me ? '30d' : '24h';
-      const tokenPayload = {
+    res.json({
+      token,
+      user: {
         id: user.id,
         email: user.email,
+        first_name: user.first_name,
+        last_name: user.last_name,
         role: user.role,
-        company_id: user.company_id,
-        session_id: sessionId
-      };
-      
-      console.log('Generating token with payload:', tokenPayload);
-      // Use the imported signToken function which includes issuer and audience
-      const token = signToken(tokenPayload);
-      console.log('Token generated successfully');
-
-      // Update last login
-      await user.update({ last_login: new Date() });
-
-      const responseData = {
-        token,
-        user: {
-          id: user.id,
-          email: user.email,
-          first_name: user.first_name,
-          last_name: user.last_name,
-          role: user.role,
-          company: user.company
-        }
-      };
-
-      console.log('Sending successful login response');
-      res.json(responseData);
-    } catch (error) {
-      console.error('Login error details:', error);
-      res.status(500).json({ error: 'Login failed' });
-    }
+        company: user.company
+      }
+    });
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({ error: 'Login failed' });
   }
+}
 
   /**
    * User registration with email notification
    */
   async register(req: RegisterRequest, res: Response): Promise<void> {
-    try {
-      const { 
-        email, 
-        password, 
-        first_name, 
-        last_name, 
-        company_name,
-        phone,
-        plan_type = 'starter'
-      } = req.body;
+  try {
+    const { email, password, first_name, last_name, phone } = req.body;
 
-      // Check if user exists
-      const existingUser = await User.findOne({ where: { email } });
-      if (existingUser) {
-        res.status(400).json({ error: 'Email already registered' });
-        return;
-      }
-
-      // Create company
-      const company = await Company.create({
-        uuid: uuidv4(),
-        name: company_name,
-        plan_type,
-        status: 'trial',
-        trial_ends_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000), // 14 days
-        sip_domain: '14378861145@sip.ringostat.com',
-        settings: {
-          caller_id_lookup: true,
-          spam_detection: true,
-          call_scoring: true
-        }
-      } as any);
-
-      // Create admin user
-      const user = await User.create({
-        uuid: uuidv4(),
-        company_id: company.id,
-        email,
-        password_hash: password, // Will be hashed in BeforeCreate hook
-        first_name,
-        last_name,
-        phone,
-        role: UserRole.ADMIN,
-        is_active: true
-      } as any);
-
-      // Create default tags
-      const defaultTags = [
-        { name: 'new', color: '#10B981', description: 'New lead' },
-        { name: 'qualified', color: '#3B82F6', description: 'Qualified lead' },
-        { name: 'customer', color: '#8B5CF6', description: 'Existing customer' },
-        { name: 'archive', color: '#6B7280', description: 'Archived' },
-        { name: 'spam', color: '#EF4444', description: 'Spam or invalid' }
-      ];
-
-      for (const tag of defaultTags) {
-        await Tag.create({
-          ...tag,
-          company_id: company.id,
-          created_by: user.id
-        } as any);
-      }
-
-      // Send welcome email
-      try {
-        await this.sendWelcomeEmail({
-          user,
-          company,
-          password, // Send the original password before it was hashed
-          isNewAccount: true
-        });
-      } catch (emailError) {
-        console.error('Failed to send welcome email:', emailError);
-        // Don't fail the registration if email fails, but log it
-      }
-
-      // Generate token using the jwt config function
-      const token = signToken({
-        id: user.id,
-        email: user.email,
-        role: user.role,
-        company_id: user.company_id
-      });
-
-      res.status(201).json({
-        token,
-        user: {
-          id: user.id,
-          email: user.email,
-          first_name: user.first_name,
-          last_name: user.last_name,
-          role: user.role,
-          company: {
-            id: company.id,
-            name: company.name,
-            plan_type: company.plan_type,
-            status: 'trial'
-          }
-        },
-        message: 'Account created successfully. Check your email for login details.'
-      });
-    } catch (error) {
-      console.error('Registration error:', error);
-      res.status(500).json({ error: 'Registration failed' });
+    // Check if account exists
+    const existingAccount = await Account.findOne({ where: { email } });
+    if (existingAccount) {
+      res.status(400).json({ error: 'Email already registered' });
+      return;
     }
+
+    // Create account (admin level)
+    const account = await Account.create({
+      uuid: uuidv4(),
+      email,
+      password_hash: password, // Will be hashed in BeforeCreate hook
+      first_name,
+      last_name,
+      phone,
+      plan_type: 'trial',
+      subscription_status: 'trialing',
+      trial_ends_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000), // 14 days
+      is_active: true
+    } as any);
+
+      // No company or user created at this point
+    // Admin will create companies after login
+
+    const token = signToken({
+      id: account.id,
+      email: account.email,
+      role: UserRole.ADMIN,
+      account_id: account.id,
+      company_id: null // No company yet
+    });
+
+    res.status(201).json({
+      token,
+      account: {
+        id: account.id,
+        email: account.email,
+        first_name: account.first_name,
+        last_name: account.last_name,
+        plan_type: account.plan_type,
+        trial_ends_at: account.trial_ends_at
+      },
+      message: 'Account created successfully. Please create a company to get started.'
+    });
+  } catch (error) {
+    console.error('Registration error:', error);
+    res.status(500).json({ error: 'Registration failed' });
   }
+}
 
   /**
    * Send welcome email with account details
@@ -252,7 +189,6 @@ Hi ${user.first_name}!
 Welcome to CallRail Clone! Your account has been successfully created.
 
 Company: ${company.name}
-Account Type: ${company.plan_type} (14-day trial)
 
 Your Login Credentials:
 ------------------------

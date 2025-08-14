@@ -5,61 +5,96 @@ import { CompanyStatus, UserRole } from '../types/enums';
 import { v4 as uuidv4 } from 'uuid';
 import redisClient from '../config/redis';  // Add this line
 import bcrypt from 'bcryptjs';
+import { signToken } from '../config/jwt';
 
 class CompanyController {
   async createCompany(req: AuthRequest, res: Response): Promise<void> {
-    try {
-      const { company_name } = req.body;
-      const accountId = req.user!.account_id || req.user!.id; // Fallback to user id for backward compatability
-
-      const subdomain = company_name
-        .toLowerCase()
-        .replace(/[^a-z0-9]/g, '-')
-        .replace(/-+/g, '-')
-        .replace(/^-|-$/g, '');
-
-      const company = await Company.create({
-        account_id: accountId,
-        name: company_name,
-        subdomain: `${subdomain}-${Date.now()}`,
-        sip_domain: `${subdomain}.pbx.crc.com`,
-        status: CompanyStatus.TRIAL,
-        trial_ends_at: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000)
-      } as any);
-
-      // Create admin user for this company
-      const account = await Account.findByPk(accountId);
-      const user = await User.create({
-        account_id: accountId,
-        company_id: company.id,
-        email: account!.email,
-        password_hash: account!.password_hash,
-        first_name: account!.first_name,
-        last_name: account!.last_name,
-        role: UserRole.ADMIN
-      } as any);
-
-      // Create default tags
-      const defaultTags = [
-        { name: 'new', color: '#10B981', description: 'First time Contact' },
-        { name: 'customer', color: '#3B82F6', description: 'Existing customer' },
-        { name: 'quote', color: '#6366F1', description: 'Quote inquiry' }
-      ];
-
-      for (const tag of defaultTags) {
-        await Tag.create({
-          ...tag,
-          company_id: company.id,
-          created_by: user.id
-        } as any);
-      }
-
-      res.status(201).json({ company, user });
-    } catch (error) {
-      console.error('Company creation error:', error);
-      res.status(500).json({ error: 'Failed to create company' });
+  try {
+    const { company_name, subdomain } = req.body;
+    
+    // Only account-level admins can create companies
+    if (req.user!.role !== UserRole.ADMIN) {
+      res.status(403).json({ error: 'Only account admins can create companies' });
+      return;
     }
+
+    const account = await Account.findByPk(req.user!.account_id, {
+      include: [Company]
+    });
+
+    if (!account) {
+      res.status(404).json({ error: 'Account not found' });
+      return;
+    }
+
+    // Check company limit
+    if (!account.canCreateCompany()) {
+      res.status(400).json({ 
+        error: 'Company limit reached',
+        limit: account.max_companies,
+        current: account.companies?.length || 0
+      });
+      return;
+    }
+
+    const company = await Company.create({
+      account_id: account.id,
+      name: company_name,
+      subdomain: subdomain || `${company_name.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`,
+      sip_domain: `${subdomain}.pbx.crc.com`,
+      status: CompanyStatus.ACTIVE,
+      timezone: 'America/New_York',
+      settings: {
+        caller_id_lookup: true,
+        spam_detection: true,
+        call_scoring: true
+      }
+    } as any);
+
+    res.status(201).json({ company });
+  } catch (error) {
+    console.error('Company creation error:', error);
+    res.status(500).json({ error: 'Failed to create company' });
   }
+}
+
+async switchCompany(req: AuthRequest, res: Response): Promise<void> {
+  try {
+    const { company_id } = req.body;
+    
+    // Only account admins can switch between companies
+    if (req.user!.role !== UserRole.ADMIN) {
+      res.status(403).json({ error: 'Only account admins can switch companies' });
+      return;
+    }
+
+    const company = await Company.findOne({
+      where: {
+        id: company_id,
+        account_id: req.user!.account_id
+      }
+    });
+
+    if (!company) {
+      res.status(404).json({ error: 'Company not found or access denied' });
+      return;
+    }
+
+    // Generate new token with selected company
+    const token = signToken({
+      id: req.user!.id,
+      email: req.user!.email,
+      role: req.user!.role,
+      account_id: req.user!.account_id,
+      company_id: req.user!.company_id
+    });
+
+    res.json({ token, company });
+  } catch (error) {
+    console.error('Company switch error:', error);
+    res.status(500).json({ error: 'Failed to switch company' });
+  }
+}
 
   // Add to CompanyController class:
   async inviteUser(req: AuthRequest, res: Response): Promise<void> {

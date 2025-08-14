@@ -46,7 +46,7 @@ async function runMigration() {
     console.log('\n📦 Creating types...');
 
     const types = [
-      `CREATE TYPE user_role AS ENUM ('admin', 'manager', 'user', 'agent')`,
+      // `CREATE TYPE user_role AS ENUM ('admin', 'manager', 'user', 'agent')`,
       `CREATE TYPE company_status AS ENUM ('active', 'inactive', 'suspended', 'cancelled', 'trial')`,
       `CREATE TYPE call_status AS ENUM ('ringing', 'in_progress', 'completed', 'failed', 'busy', 'no_answer', 'canceled', 'voicemail', 'missed')`,
       `CREATE TYPE call_direction AS ENUM ('inbound', 'outbound')`,
@@ -63,6 +63,61 @@ async function runMigration() {
     ];
 
     for (const type of types) {
+      console.log('\n🔧 Migrating user_role enum...');
+
+      try {
+        // 1) If old type doesn't exist, create the desired one and we're done
+        const res = await client.query(`
+    SELECT 1 FROM pg_type WHERE typname = 'user_role'
+  `);
+
+        if (res.rowCount === 0) {
+          await client.query(`CREATE TYPE user_role AS ENUM ('admin', 'manager', 'agent', 'reporting')`);
+          console.log('   ✅ Created user_role enum fresh');
+        } else {
+          // 2) Old type exists. Create a new enum with target values.
+          await client.query(`DO $$
+    BEGIN
+      IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'user_role_new') THEN
+        CREATE TYPE user_role_new AS ENUM ('admin', 'manager', 'agent', 'reporting');
+      END IF;
+    END $$;`);
+
+          // 3) Migrate columns to user_role_new with mapping.
+          // NOTE: We map old 'user' -> 'agent'. Change if you prefer 'reporting'.
+          const migrateCol = async (table: string, column: string) => {
+            await client.query(`
+        ALTER TABLE ${table}
+        ALTER COLUMN ${column} DROP DEFAULT;
+      `);
+            await client.query(`
+        ALTER TABLE ${table}
+        ALTER COLUMN ${column} TYPE user_role_new
+        USING (
+          CASE ${column}::text
+            WHEN 'user' THEN 'agent'
+            ELSE ${column}::text
+          END
+        )::user_role_new;
+      `);
+          };
+
+          await migrateCol('users', 'role');
+          await migrateCol('user_invitations', 'role');
+
+          // 4) Drop old enum and rename new -> user_role
+          await client.query(`DROP TYPE user_role`);
+          await client.query(`ALTER TYPE user_role_new RENAME TO user_role`);
+
+          // 5) Re-apply defaults if needed
+          await client.query(`ALTER TABLE users ALTER COLUMN role SET DEFAULT 'agent'::user_role`);
+
+          console.log('   ✅ Migrated user_role enum to {admin, manager, agent, reporting}');
+        }
+      } catch (error: any) {
+        console.error('   ❌ Failed migrating user_role enum:', error.message);
+      }
+
       try {
         await client.query(type);
         const typeName = type.match(/CREATE TYPE (\w+)/)?.[1];
@@ -100,10 +155,9 @@ async function runMigration() {
         recording_enabled BOOLEAN DEFAULT true,
         recording_disclaimer BOOLEAN DEFAULT true,
         settings JSONB DEFAULT '{"caller_id_lookup": true, "spam_detection": true, "call_scoring": true}'::jsonb,
-        plan_type VARCHAR(50) DEFAULT 'starter',
-        billing_email VARCHAR(255),
-        monthly_minutes_limit INTEGER DEFAULT 100000,
-        monthly_texts_limit INTEGER DEFAULT 100000,
+        monthly_calls_used INTEGER DEFAULT 0,
+        monthly_texts_used INTEGER DEFAULT 0,
+        usage_reset_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         status company_status DEFAULT 'active',
         trial_ends_at TIMESTAMP,
         suspended_at TIMESTAMP,
@@ -115,6 +169,32 @@ async function runMigration() {
       )
     `);
     console.log('   ✅ Created companies table');
+
+    // Move billing fields off companies and add usage tracking
+    try {
+      await client.query(`
+    ALTER TABLE companies 
+      DROP COLUMN IF EXISTS plan_type,
+      DROP COLUMN IF EXISTS billing_email,
+      DROP COLUMN IF EXISTS monthly_minutes_limit,
+      DROP COLUMN IF EXISTS monthly_texts_limit
+  `);
+      console.log('   ✅ Dropped billing/plan columns from companies');
+    } catch (error: any) {
+      console.log(`   ⏭️  Companies drop billing fields: ${error.message}`);
+    }
+
+    try {
+      await client.query(`
+    ALTER TABLE companies
+      ADD COLUMN IF NOT EXISTS monthly_calls_used INTEGER DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS monthly_texts_used INTEGER DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS usage_reset_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  `);
+      console.log('   ✅ Added usage tracking columns to companies');
+    } catch (error: any) {
+      console.log(`   ⏭️  Companies usage tracking add: ${error.message}`);
+    }
 
     // Add DNI columns to companies if table already exists
     const dniCompanyColumns = [
@@ -147,6 +227,29 @@ async function runMigration() {
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
   )
 `);
+
+// Subscription/billing fields now belong to accounts
+try {
+  await client.query(`
+    ALTER TABLE accounts 
+      ADD COLUMN IF NOT EXISTS plan_type VARCHAR(50) DEFAULT 'enterprise',
+      ADD COLUMN IF NOT EXISTS subscription_status VARCHAR(50) DEFAULT 'active',
+      ADD COLUMN IF NOT EXISTS subscription_id VARCHAR(255),
+      ADD COLUMN IF NOT EXISTS customer_id VARCHAR(255),
+      ADD COLUMN IF NOT EXISTS trial_ends_at TIMESTAMP,
+      ADD COLUMN IF NOT EXISTS subscription_ends_at TIMESTAMP,
+      ADD COLUMN IF NOT EXISTS monthly_call_limit INTEGER DEFAULT 1000,
+      ADD COLUMN IF NOT EXISTS monthly_text_limit INTEGER DEFAULT 500,
+      ADD COLUMN IF NOT EXISTS max_companies INTEGER DEFAULT 1,
+      ADD COLUMN IF NOT EXISTS max_users_per_company INTEGER DEFAULT 5,
+      ADD COLUMN IF NOT EXISTS billing_email VARCHAR(255)
+  `);
+  console.log('   ✅ Added subscription/billing columns to accounts');
+} catch (error: any) {
+  console.log(`   ⏭️  Accounts billing add: ${error.message}`);
+}
+
+
     console.log('   ✅ Created accounts table');
 
     // Users table
@@ -159,7 +262,7 @@ async function runMigration() {
         password_hash VARCHAR(255) NOT NULL,
         first_name VARCHAR(100),
         last_name VARCHAR(100),
-        role user_role DEFAULT 'user',
+        role user_role DEFAULT 'agent',
         phone VARCHAR(20),
         extension VARCHAR(10),
         sip_username VARCHAR(100) UNIQUE,

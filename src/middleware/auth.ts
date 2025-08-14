@@ -78,6 +78,22 @@ export const authorize = (...roles: UserRole[]) => {
       return;
     }
 
+     const roleHierarchy: Record<UserRole, number> = {
+      [UserRole.ADMIN]: 4,     // Account admin
+      [UserRole.MANAGER]: 3,   // Company manager
+      [UserRole.REPORTING]: 2, // Reporting role
+      [UserRole.AGENT]: 1,      // Agent role
+      [UserRole.USER]: 0,
+    };
+
+    const userLevel = roleHierarchy[req.user.role] || 0;
+    const requiredLevel = Math.min(...roles.map(r => roleHierarchy[r] || 0));
+
+    if (userLevel < requiredLevel) {
+      res.status(403).json({ error: 'Insufficient permissions' });
+      return;
+    }
+
     if (!roles.includes(req.user.role)) {
       console.log('Authorization failed - User role:', req.user.role, 'Required roles:', roles);
       res.status(403).json({ error: 'Insufficient permissions' });
@@ -87,6 +103,36 @@ export const authorize = (...roles: UserRole[]) => {
     next();
   };
 };
+
+export const requireAccountAdmin = (req: AuthRequest, res: Response, next: NextFunction): void => {
+  if (!req.user || req.user.role !== UserRole.ADMIN) {
+    res.status(403).json({ error: 'Account admin access required' });
+    return;
+  }
+  next();
+};
+
+export const requireCompanyAccess = (req: AuthRequest, res: Response, next: NextFunction): void => {
+  if (!req.user) {
+    res.status(401).json({ error: 'Not authenticated' });
+    return;
+  }
+
+  // Account admins have access to all companies in their account
+  if (req.user.role === UserRole.ADMIN) {
+    next();
+    return;
+  }
+
+  // Company users must have a company_id
+  if (!req.user.company_id) {
+    res.status(403).json({ error: 'No company access' });
+    return;
+  }
+
+  next();
+};
+
 
 // Permission-based middleware
 export const requirePermission = (permission: string) => {
