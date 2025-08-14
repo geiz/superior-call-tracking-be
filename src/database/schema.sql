@@ -1396,3 +1396,54 @@ DROP COLUMN IF EXISTS role;
 -- Add account_id to users if not exists
 ALTER TABLE users 
 ADD COLUMN IF NOT EXISTS account_id INTEGER REFERENCES accounts(id) ON DELETE CASCADE;
+
+-- MIGRATION 9
+ALTER TABLE accounts 
+ADD COLUMN IF NOT EXISTS subscription_limits JSONB DEFAULT '{
+  "max_companies": 1,
+  "max_users_per_company": 5,
+  "max_numbers_per_company": 10,
+  "max_minutes_per_month": 1000
+}'::jsonb;
+
+-- MIGRATION 10
+CREATE TABLE IF NOT EXISTS user_companies (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+    role user_role NOT NULL,
+    is_default BOOLEAN DEFAULT false,
+    is_active BOOLEAN DEFAULT true,
+    joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    invited_by INTEGER REFERENCES users(id),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, company_id)
+);
+
+-- Create indexes
+CREATE INDEX IF NOT EXISTS idx_user_companies_user ON user_companies(user_id);
+CREATE INDEX IF NOT EXISTS idx_user_companies_company ON user_companies(company_id);
+CREATE INDEX IF NOT EXISTS idx_user_companies_active ON user_companies(is_active) WHERE is_active = true;
+
+-- Add update trigger
+CREATE TRIGGER update_user_companies_updated_at
+    BEFORE UPDATE ON user_companies
+    FOR EACH ROW
+    EXECUTE FUNCTION update_updated_at_column();
+
+-- Migrate existing users that have company_id to user_companies
+-- (Only if you had users with company_id before)
+INSERT INTO user_companies (user_id, company_id, role, is_default, is_active)
+SELECT 
+    u.id,
+    1, -- Default to company ID 1, or adjust as needed
+    COALESCE(u.role, 'agent'), -- Use existing role or default to 'agent'
+    true, -- Set as default
+    u.is_active
+FROM users u
+WHERE NOT EXISTS (
+    SELECT 1 FROM user_companies uc 
+    WHERE uc.user_id = u.id
+)
+AND u.id IS NOT NULL;

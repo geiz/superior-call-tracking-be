@@ -157,7 +157,7 @@ async function runMigration() {
         settings JSONB DEFAULT '{"caller_id_lookup": true, "spam_detection": true, "call_scoring": true}'::jsonb,
         monthly_calls_used INTEGER DEFAULT 0,
         monthly_texts_used INTEGER DEFAULT 0,
-        usage_reset_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        usage_reset_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         status company_status DEFAULT 'active',
         trial_ends_at TIMESTAMP,
         suspended_at TIMESTAMP,
@@ -228,9 +228,9 @@ async function runMigration() {
   )
 `);
 
-// Subscription/billing fields now belong to accounts
-try {
-  await client.query(`
+    // Subscription/billing fields now belong to accounts
+    try {
+      await client.query(`
     ALTER TABLE accounts 
       ADD COLUMN IF NOT EXISTS plan_type VARCHAR(50) DEFAULT 'enterprise',
       ADD COLUMN IF NOT EXISTS subscription_status VARCHAR(50) DEFAULT 'active',
@@ -242,12 +242,18 @@ try {
       ADD COLUMN IF NOT EXISTS monthly_text_limit INTEGER DEFAULT 500,
       ADD COLUMN IF NOT EXISTS max_companies INTEGER DEFAULT 1,
       ADD COLUMN IF NOT EXISTS max_users_per_company INTEGER DEFAULT 5,
-      ADD COLUMN IF NOT EXISTS billing_email VARCHAR(255)
+      ADD COLUMN IF NOT EXISTS billing_email VARCHAR(255),
+      ADD COLUMN IF NOT EXISTS subscription_limits JSONB DEFAULT '{
+        "max_companies": 1,
+        "max_users_per_company": 5,
+        "max_numbers_per_company": 10,
+        "max_minutes_per_month": 1000
+      }'::jsonb
   `);
-  console.log('   ✅ Added subscription/billing columns to accounts');
-} catch (error: any) {
-  console.log(`   ⏭️  Accounts billing add: ${error.message}`);
-}
+      console.log('   ✅ Added subscription/billing columns to accounts');
+    } catch (error: any) {
+      console.log(`   ⏭️  Accounts billing add: ${error.message}`);
+    }
 
 
     console.log('   ✅ Created accounts table');
@@ -298,6 +304,34 @@ try {
     await client.query('CREATE INDEX IF NOT EXISTS idx_users_created_by ON users(created_by)');
     await client.query('CREATE INDEX IF NOT EXISTS idx_companies_account_id ON companies(account_id)');
     console.log('   ✅ Added indexes for new columns');
+
+
+    // --- user_companies (junction) ---
+    try {
+      await client.query(`
+    CREATE TABLE IF NOT EXISTS user_companies (
+      id SERIAL PRIMARY KEY,
+      user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+      role user_role NOT NULL,
+      is_default BOOLEAN DEFAULT false,
+      is_active BOOLEAN DEFAULT true,
+      joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      invited_by INTEGER REFERENCES users(id),
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(user_id, company_id)
+    )
+  `);
+      console.log('   ✅ Created user_companies table');
+
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_user_companies_user ON user_companies(user_id)`);
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_user_companies_company ON user_companies(company_id)`);
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_user_companies_active ON user_companies(is_active) WHERE is_active = true`);
+      console.log('   ✅ Created user_companies indexes');
+    } catch (error: any) {
+      console.log(`   ⏭️  user_companies create/indexes: \${error.message}\``);
+    }
 
     // Tags table
     await client.query(`
