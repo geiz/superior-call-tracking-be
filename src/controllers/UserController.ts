@@ -1,6 +1,6 @@
 // backend/src/controllers/UsersController.ts
 import { Request, Response } from 'express';
-import { User, Company, UserInvitation } from '../models';
+import { User, Company, UserInvitation, UserCompany } from '../models';
 import { UserRole } from '../types/enums';
 import { InvitationStatus } from '../models/UserInvitation';
 import { AuthRequest } from '../middleware/auth';
@@ -45,8 +45,14 @@ export class UsersController {
       const { role, is_active, search, page = 1, limit = 50, include_pending = 'true' } = req.query;
       const offset = (Number(page) - 1) * Number(limit);
 
+      const userCompanies = await UserCompany.findAll({
+        where: { company_id: req.user!.company_id, is_active: true },
+        attributes: ['user_id']
+      });
+      const userIds = userCompanies.map(uc => uc.user_id);
+
       const where: any = {
-        company_id: req.user!.company_id
+        id: { [Op.in]: userIds }
       };
 
       // Include or exclude pending users (inactive with invitation)
@@ -117,15 +123,22 @@ export class UsersController {
       const { id } = req.params;
 
       const user = await User.findOne({
-        where: {
-          id: parseInt(id),
-          company_id: req.user!.company_id
-        },
+        include: [{
+          model: UserCompany,
+          where: { id: parseInt(id), company_id: req.user!.company_id },
+          required: true
+        }],
         attributes: { exclude: ['password_hash'] }
       });
 
       if (!user) {
         res.status(404).json({ error: 'User not found' });
+        return;
+      }
+
+      const hasAccess = await user.hasAccessToCompany(req.user!.company_id);
+      if (!hasAccess) {
+        res.status(403).json({ error: 'Access to Compnay is denied' });
         return;
       }
 
@@ -193,7 +206,7 @@ export class UsersController {
 
       // Return user without password
       const userResponse = user.toJSON();
-    //   delete userResponse.password_hash;
+      //   delete userResponse.password_hash;
 
       res.status(201).json({
         user: userResponse,
@@ -220,10 +233,11 @@ export class UsersController {
       }
 
       const user = await User.findOne({
-        where: {
-          id: parseInt(id),
-          company_id: req.user!.company_id
-        }
+        include: [{
+          model: UserCompany,
+          where: { id: parseInt(id), company_id: req.user!.company_id },
+          required: true
+        }],
       });
 
       if (!user) {
@@ -251,7 +265,7 @@ export class UsersController {
       await user.update(updates);
 
       const userResponse = user.toJSON();
-    //   delete userResponse.password_hash;
+      //   delete userResponse.password_hash;
 
       res.json(userResponse);
     } catch (error) {
@@ -273,10 +287,11 @@ export class UsersController {
       }
 
       const user = await User.findOne({
-        where: {
-          id: parseInt(id),
-          company_id: req.user!.company_id
-        }
+        include: [{
+          model: UserCompany,
+          where: { id: parseInt(id), company_id: req.user!.company_id },
+          required: true
+        }],
       });
 
       if (!user) {
@@ -313,10 +328,11 @@ export class UsersController {
       }
 
       const user = await User.findOne({
-        where: {
-          id: parseInt(id),
-          company_id: req.user!.company_id
-        }
+        include: [{
+          model: UserCompany,
+          where: { id: parseInt(id), company_id: req.user!.company_id },
+          required: true
+        }],
       });
 
       if (!user) {
@@ -347,10 +363,11 @@ export class UsersController {
       }
 
       const user = await User.findOne({
-        where: {
-          id: parseInt(id),
-          company_id: req.user!.company_id
-        }
+        include: [{
+          model: UserCompany,
+          where: { id: parseInt(id), company_id: req.user!.company_id },
+          required: true
+        }],
       });
 
       if (!user) {
@@ -382,7 +399,11 @@ export class UsersController {
   async getUserStats(req: AuthRequest, res: Response): Promise<void> {
     try {
       const stats = await User.findAll({
-        where: { company_id: req.user!.company_id },
+        include: [{
+          model: UserCompany,
+          where: { company_id: req.user!.company_id },
+          required: true
+        }],
         attributes: [
           'role',
           [User.sequelize!.fn('COUNT', User.sequelize!.col('id')), 'count']
@@ -391,14 +412,19 @@ export class UsersController {
       });
 
       const totalUsers = await User.count({
-        where: { company_id: req.user!.company_id }
+        include: [{
+          model: UserCompany,
+          where: { company_id: req.user!.company_id },
+          required: true
+        }],
       });
 
       const activeUsers = await User.count({
-        where: {
-          company_id: req.user!.company_id,
-          is_active: true
-        }
+        include: [{
+          model: UserCompany,
+          where: { is_active: true, company_id: req.user!.company_id },
+          required: true
+        }],
       });
 
       res.json({
