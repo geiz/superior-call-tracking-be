@@ -133,7 +133,7 @@ export default class User extends Model<User> {
   @BelongsToMany(() => Company, () => UserCompany)
   companies!: Company[];
 
-  @HasMany(() => UserCompany)
+  @HasMany(() => UserCompany, 'user_id')
   userCompanies!: UserCompany[];
 
   @HasMany(() => Call, 'agent_id')

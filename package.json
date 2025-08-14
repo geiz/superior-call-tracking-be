@@ -20,6 +20,7 @@
     "db:checkTable": "ts-node scripts/checkTables.ts",
     "db:checkSchema": "ts-node scripts/checkSchema.ts",
     "db:seed:calls": "ts-node scripts/seedCalls.ts",
+    "db:action": "ts-node scripts/action.ts",
     "test:setup": "ts-node scripts/setupTwilioTest.ts",
     "test:cleanup": "ts-node scripts/cleanupTwilioTest.ts",
     "test:checkCallsSchema": "ts-node scripts/checkCallsSchema.ts",
