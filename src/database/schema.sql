@@ -1365,3 +1365,34 @@ ADD COLUMN IF NOT EXISTS usage_reset_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
 -- Fix user roles enum to match your requirements
 DROP TYPE IF EXISTS user_role CASCADE;
 CREATE TYPE user_role AS ENUM ('admin', 'manager', 'agent', 'reporting');
+
+
+-- MIGRATION 8
+-- Create user_companies junction table for many-to-many relationship
+CREATE TABLE IF NOT EXISTS user_companies (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    company_id INTEGER NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+    role user_role NOT NULL,
+    is_default BOOLEAN DEFAULT false,
+    joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    invited_by INTEGER REFERENCES users(id),
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(user_id, company_id)
+);
+
+-- Create indexes
+CREATE INDEX idx_user_companies_user ON user_companies(user_id);
+CREATE INDEX idx_user_companies_company ON user_companies(company_id);
+CREATE INDEX idx_user_companies_active ON user_companies(is_active) WHERE is_active = true;
+
+-- Remove company_id and role from users table (they're now in junction table)
+ALTER TABLE users 
+DROP COLUMN IF EXISTS company_id,
+DROP COLUMN IF EXISTS role;
+
+-- Add account_id to users if not exists
+ALTER TABLE users 
+ADD COLUMN IF NOT EXISTS account_id INTEGER REFERENCES accounts(id) ON DELETE CASCADE;

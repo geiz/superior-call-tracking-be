@@ -22,6 +22,7 @@ import Webhook from './Webhook';
 import WebhookDelivery from './WebhookDelivery';
 import SipEvent from './SipEvent';
 import UserInvitation from './UserInvitation';
+import UserCompany from './UserCompany';
 
 // Initialize Sequelize with configuration
 const sequelize = new Sequelize({
@@ -58,6 +59,7 @@ const sequelize = new Sequelize({
     WebhookDelivery,
     SipEvent,
     UserInvitation,
+    UserCompany,
   ],
   pool: {
     max: 5,
@@ -92,7 +94,8 @@ export {
   Webhook,
   WebhookDelivery,
   SipEvent,
-  UserInvitation
+  UserInvitation,
+  UserCompany,
 };
 
 export * from '../types/enums';

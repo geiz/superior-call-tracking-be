@@ -15,5 +15,6 @@ router.use(authenticate);
 router.get('/me', AuthController.me.bind(AuthController));
 router.post('/logout', AuthController.logout.bind(AuthController));
 router.put('/change-password', AuthController.changePassword.bind(AuthController));
+router.get('/me', AuthController.me.bind(AuthController));
 
 export default router;

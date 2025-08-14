@@ -1,6 +1,6 @@
 // backend/src/controllers/InvitationController.ts
 import { Request, Response } from 'express';
-import { User, Company, UserInvitation } from '../models';
+import { User, Company, UserInvitation, UserCompany } from '../models';
 import { UserRole } from '../types/enums';
 import { InvitationStatus } from '../models/UserInvitation';
 import { AuthRequest } from '../middleware/auth';
@@ -16,6 +16,8 @@ interface InviteUserRequest extends AuthRequest {
     last_name: string;
     password: string;
     role: UserRole;
+    company_ids: number[];
+    default_company_id: number;
     phone?: string;
     personal_note?: string;
     send_email?: boolean;
@@ -26,132 +28,93 @@ export class InvitationController {
   /**
    * Create and send invitation
    */
-  async inviteUser(req: InviteUserRequest, res: Response): Promise<void> {
-    try {
-      const {
-        email,
-        first_name,
-        last_name,
-        password,
-        role,
-        phone,
-        personal_note,
-        send_email = true
-      } = req.body;
+ async inviteUser(req: InviteUserRequest, res: Response): Promise<void> {
+  try {
+    const {
+      email,
+      first_name,
+      last_name,
+      password,
+      role,
+      phone,
+      company_ids, // Array of company IDs to grant access to
+      default_company_id // Which company should be default
+    } = req.body;
 
-      // Validate role - exclude USER role from invitations
-      const allowedRoles = [
-        UserRole.AGENT,
-        UserRole.REPORTING,
-        UserRole.MANAGER,
-        UserRole.ADMIN
-      ];
+    // Check if user already exists
+    let user = await User.findOne({ where: { email } });
 
-      if (!allowedRoles.includes(role)) {
-        res.status(400).json({ 
-          error: 'Invalid role. Must be one of: agent, reporting, manager, ADMIN' 
-        });
-        return;
-      }
-
-      // Check if user already exists
-      const existingUser = await User.findOne({
-        where: { email }
-      });
-
-      if (existingUser) {
-        res.status(400).json({ 
-          error: 'A user with this email already exists' 
-        });
-        return;
-      }
-
-      // Check if there's already a pending invitation
-      const existingInvitation = await UserInvitation.findOne({
-        where: {
-          email,
-          status: InvitationStatus.PENDING,
-          expires_at: { [Op.gt]: new Date() }
-        }
-      });
-
-      if (existingInvitation) {
-        res.status(400).json({ 
-          error: 'A pending invitation already exists for this email' 
-        });
-        return;
-      }
-
-      // Hash the password for storage
-      const hashedPassword = await bcrypt.hash(password, 10);
-
-      // Create the user immediately (in pending state)
-      const user = await User.create({
+    if (!user) {
+      // Create new user
+      user = await User.create({
         uuid: uuidv4(),
-        company_id: req.user!.company_id,
+        account_id: req.user!.account_id,
         email,
-        password_hash: hashedPassword,
+        password_hash: password,
         first_name,
         last_name,
-        role,
         phone,
-        personal_note,
-        is_active: false, // Set to inactive until invitation is accepted
-        created_by: req.user!.id
+        is_active: true
       } as any);
+    }
 
-      // Create invitation linked to the user
-      const invitation = await UserInvitation.create({
-        uuid: uuidv4(),
-        company_id: req.user!.company_id,
-        email,
-        first_name,
-        last_name,
-        temp_password: hashedPassword,
-        role,
-        phone,
-        personal_note,
-        invited_by: req.user!.id,
-        user_id: user.id, // Link to the created user
-        status: InvitationStatus.PENDING,
-        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 days
-      }as any );
-
-      // Send invitation email
-      if (send_email) {
-        await this.sendInvitationEmail(invitation, password, req.user!);
-        
-        await invitation.update({
-          email_sent: true,
-          email_sent_at: new Date(),
-          email_send_attempts: 1
-        });
-      }
-
-      res.status(201).json({
-        invitation: {
-          id: invitation.id,
-          uuid: invitation.uuid,
-          email: invitation.email,
-          first_name: invitation.first_name,
-          last_name: invitation.last_name,
-          role: invitation.role,
-          status: invitation.status,
-          expires_at: invitation.expires_at,
-          email_sent: invitation.email_sent
-        },
-        credentials: {
-          email: invitation.email,
-          password: password,
-          login_url: `${process.env.FRONTEND_URL}/login`
+    // Add user to companies
+    const companyIds = company_ids || [req.user!.company_id];
+    
+    for (const companyId of companyIds) {
+      const company = await Company.findOne({
+        where: {
+          id: companyId,
+          account_id: req.user!.account_id
         }
       });
-    } catch (error) {
-      console.error('Error creating invitation:', error);
-      res.status(500).json({ error: 'Failed to create invitation' });
-    }
-  }
 
+      if (!company) continue;
+
+      // Check if user already has access
+      const existing = await UserCompany.findOne({
+        where: {
+          user_id: user.id,
+          company_id: companyId
+        }
+      });
+
+      if (existing) {
+        // Update role if needed
+        await existing.update({ 
+          role,
+          is_active: true,
+          is_default: companyId === (default_company_id || companyIds[0])
+        });
+      } else {
+        // Add new access
+        await UserCompany.create({
+          user_id: user.id,
+          company_id: companyId,
+          role,
+          is_default: companyId === (default_company_id || companyIds[0]),
+          invited_by: req.user!.id
+        } as any);
+      }
+    }
+
+    // Send invitation email...
+    
+    res.status(201).json({
+      user: {
+        id: user.id,
+        email: user.email,
+        first_name: user.first_name,
+        last_name: user.last_name,
+        companies: companyIds
+      },
+      message: 'User invited successfully'
+    });
+  } catch (error) {
+    console.error('Error inviting user:', error);
+    res.status(500).json({ error: 'Failed to invite user' });
+  }
+}
   /**
    * Get all invitations
    */

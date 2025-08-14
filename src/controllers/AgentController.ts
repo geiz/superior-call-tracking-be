@@ -1,14 +1,14 @@
 import { Response } from 'express';
 import { AuthRequest } from '../middleware/auth';
-import { User, AgentSession } from '../models';
-import { AgentStatus } from '../types/enums';
+import { User, AgentSession, UserCompany } from '../models';
+import { AgentStatus, UserRole } from '../types/enums';
 import AgentSessionService from '../services/AgentSessionService';
 
 class AgentController {
   async getActiveAgents(req: AuthRequest, res: Response): Promise<void> {
     try {
       const agents = await AgentSessionService.getActiveAgents(req.user!.company_id);
-      
+
       res.json(agents.map(agent => ({
         id: agent.id,
         email: agent.email,
@@ -27,10 +27,20 @@ class AgentController {
   async getAgentMetrics(req: AuthRequest, res: Response): Promise<void> {
     try {
       const { id } = req.params;
-      const { date_from, date_to } = req.query;
+      const { date_from, date_to, company_id } = req.query;
+
+      // Use current company if not specified
+      const targetCompanyId = company_id ? parseInt(company_id as string) : req.user!.company_id;
+
+      // Check if user has access to this company
+      if (req.user!.role !== UserRole.ADMIN && targetCompanyId !== req.user!.company_id) {
+        res.status(403).json({ error: 'Access denied to this company' });
+        return;
+      }
 
       const metrics = await AgentSessionService.getAgentMetrics(
         parseInt(id),
+        targetCompanyId || undefined,
         date_from ? new Date(date_from as string) : undefined,
         date_to ? new Date(date_to as string) : undefined
       );
@@ -82,7 +92,7 @@ class AgentController {
       const { date_from, date_to, limit = 50 } = req.query;
 
       const where: any = { user_id: parseInt(id) };
-      
+
       if (date_from || date_to) {
         where.started_at = {};
         if (date_from) where.started_at.$gte = new Date(date_from as string);
@@ -107,7 +117,7 @@ class AgentController {
       const { date_from, date_to } = req.query;
 
       const where: any = { company_id: req.user!.company_id };
-      
+
       if (date_from || date_to) {
         where.started_at = {};
         if (date_from) where.started_at.$gte = new Date(date_from as string);
@@ -117,7 +127,14 @@ class AgentController {
       // Get all agent sessions for the company
       const sessions = await AgentSession.findAll({
         where,
-        include: [User]
+        include: [{
+          model: User,
+          include: [{
+            model: UserCompany,
+            where: { company_id: req.user!.company_id },
+            required: true
+          }]
+        }]
       });
 
       // Aggregate stats by agent
@@ -128,6 +145,7 @@ class AgentController {
         if (!agentStats.has(agentId)) {
           agentStats.set(agentId, {
             agent: session.user,
+            role: session.user.userCompanies[0]?.role,
             total_sessions: 0,
             total_time_online: 0,
             total_calls_handled: 0,
@@ -140,7 +158,7 @@ class AgentController {
         stats.total_sessions += 1;
         stats.total_calls_handled += session.calls_handled;
         stats.total_talk_time += session.total_talk_time;
-        
+
         const sessionDuration = session.ended_at
           ? (session.ended_at.getTime() - session.started_at.getTime()) / 1000
           : 0;

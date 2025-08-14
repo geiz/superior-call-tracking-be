@@ -4,6 +4,7 @@ import { ParsedQs } from 'qs';
 import { UserRole } from '../types/enums';
 import { AuthUser } from '../types/interfaces';
 import { verifyToken } from '../config/jwt';
+import { User } from '../models';
 
 export interface AuthRequest<
   P = Record<string, any>,
@@ -78,12 +79,11 @@ export const authorize = (...roles: UserRole[]) => {
       return;
     }
 
-     const roleHierarchy: Record<UserRole, number> = {
+    const roleHierarchy: Record<UserRole, number> = {
       [UserRole.ADMIN]: 4,     // Account admin
       [UserRole.MANAGER]: 3,   // Company manager
       [UserRole.REPORTING]: 2, // Reporting role
       [UserRole.AGENT]: 1,      // Agent role
-      [UserRole.USER]: 0,
     };
 
     const userLevel = roleHierarchy[req.user.role] || 0;
@@ -112,7 +112,7 @@ export const requireAccountAdmin = (req: AuthRequest, res: Response, next: NextF
   next();
 };
 
-export const requireCompanyAccess = (req: AuthRequest, res: Response, next: NextFunction): void => {
+export const requireCompanyAccess = async (req: AuthRequest, res: Response, next: NextFunction): Promise<void> => {
   if (!req.user) {
     res.status(401).json({ error: 'Not authenticated' });
     return;
@@ -126,9 +126,28 @@ export const requireCompanyAccess = (req: AuthRequest, res: Response, next: Next
 
   // Company users must have a company_id
   if (!req.user.company_id) {
-    res.status(403).json({ error: 'No company access' });
+    res.status(403).json({ error: 'No company selected' });
     return;
   }
+
+  const user = await User.findByPk(req.user.id);
+  if (!user) {
+    res.status(404).json({ error: 'User not found' });
+    return;
+  }
+
+  const hasAccess = await user.hasAccessToCompany(req.user.company_id);
+  if (!hasAccess) {
+    res.status(403).json({ error: 'Access denied to this company' });
+    return;
+  }
+
+  // Update role for current company context
+  const role = await user.getRoleInCompany(req.user.company_id);
+  if (role) {
+    req.user.role = role;
+  }
+
 
   next();
 };

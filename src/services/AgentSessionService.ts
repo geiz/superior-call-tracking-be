@@ -1,6 +1,6 @@
 import { v4 as uuidv4 } from 'uuid';
 import { Op, WhereOptions } from 'sequelize';
-import { AgentSession, User } from '../models';
+import { AgentSession, User, UserCompany, Company} from '../models';
 import { AgentStatus } from '../types/enums';
 
 export class AgentSessionService {
@@ -8,21 +8,42 @@ export class AgentSessionService {
     userId: number, 
     ipAddress: string, 
     userAgent: string,
-    socketId?: string
-  ): Promise<AgentSession> {
+    socketId?: string,
+    companyId?: number, 
+  ): Promise<{ session: AgentSession; session_id: string }>  {
     // End any existing sessions
     await this.endAllSessions(userId);
 
-    // Get user to ensure we have company_id
-    const user = await User.findByPk(userId);
+    const user = await User.findByPk(userId, {
+      include: [{
+        model: UserCompany,
+        where: { is_active: true },
+        include: [Company],
+        required: false
+      }]
+    });
+    
     if (!user) {
       throw new Error('User not found');
+    }
+
+        // Determine which company to use for the session
+        let sessionCompanyId = companyId;
+
+if (!sessionCompanyId && user.userCompanies && user.userCompanies.length > 0) {
+      // Use default company or first available
+      const defaultCompany = user.userCompanies.find(uc => uc.is_default);
+      sessionCompanyId = defaultCompany?.company_id || user.userCompanies[0].company_id;
+    }
+
+    if (!sessionCompanyId) {
+      throw new Error('No company available for session');
     }
 
     // Create new session
     const session = await AgentSession.create({
       user_id: userId,
-      company_id: user.company_id,
+      company_id: sessionCompanyId, // Use the determined company ID
       session_id: uuidv4(),
       status: AgentStatus.AVAILABLE,
       ip_address: ipAddress,
@@ -30,7 +51,10 @@ export class AgentSessionService {
       socket_id: socketId
     } as any);
 
-    return session;
+    return {
+      session,
+      session_id: session.session_id
+    };
   }
 
   async endSession(sessionId: string): Promise<void> {
@@ -46,17 +70,15 @@ export class AgentSessionService {
   }
 
   async endAllSessions(userId: number): Promise<void> {
-    // Find all active sessions and end them
+    // Find all active sessions for this user (across all companies)
     const activeSessions = await AgentSession.findAll({
       where: { 
-        user_id: userId
+        user_id: userId,
+        ended_at: { [Op.is]: null }
       } as WhereOptions<AgentSession>
     });
-
-    // Filter for sessions that haven't ended
-    const sessionsToEnd = activeSessions.filter(s => !s.ended_at);
     
-    if (sessionsToEnd.length > 0) {
+    if (activeSessions.length > 0) {
       await AgentSession.update(
         { 
           ended_at: new Date(),
@@ -65,12 +87,13 @@ export class AgentSessionService {
         },
         { 
           where: { 
-            id: sessionsToEnd.map(s => s.id)
+            id: activeSessions.map(s => s.id)
           } as WhereOptions<AgentSession>
         }
       );
     }
   }
+
 
   async updateActivity(sessionId: string): Promise<void> {
     const session = await AgentSession.findOne({
@@ -117,43 +140,57 @@ export class AgentSessionService {
   }
 
   async getActiveAgents(companyId: number): Promise<User[]> {
-    // First get all sessions for the company that are online
+    // Get all active sessions for the company
     const activeSessions = await AgentSession.findAll({
       where: { 
         company_id: companyId,
-        is_online: true
+        is_online: true,
+        ended_at: { [Op.is]: null }
       } as WhereOptions<AgentSession>
     });
 
-    // Filter for sessions that haven't ended
-    const activeSessionUserIds = activeSessions
-      .filter(s => !s.ended_at)
-      .map(s => s.user_id);
+    const activeUserIds = activeSessions.map(s => s.user_id);
 
-    if (activeSessionUserIds.length === 0) {
+    if (activeUserIds.length === 0) {
       return [];
     }
 
     // Get the users for these sessions
     const users = await User.findAll({
       where: { 
-        id: activeSessionUserIds,
-        company_id: companyId 
+        id: activeUserIds
       },
-      include: [{
-        model: AgentSession,
-        where: { 
-          is_online: true 
-        } as WhereOptions<AgentSession>,
-        required: false
-      }]
+      include: [
+        {
+          model: UserCompany,
+          where: { 
+            company_id: companyId,
+            is_active: true 
+          },
+          required: true
+        },
+        {
+          model: AgentSession,
+          where: { 
+            is_online: true,
+            ended_at: { [Op.is]: null },
+            company_id: companyId
+          } as WhereOptions<AgentSession>,
+          required: false
+        }
+      ]
     });
 
     return users;
   }
 
-  async getAgentMetrics(userId: number, dateFrom?: Date, dateTo?: Date): Promise<any> {
+  async getAgentMetrics(userId: number, companyId?: number, dateFrom?: Date, dateTo?: Date): Promise<any> {
     const where: any = { user_id: userId };
+    
+    // If companyId provided, filter by company
+    if (companyId) {
+      where.company_id = companyId;
+    }
     
     if (dateFrom || dateTo) {
       where.started_at = {};
@@ -169,7 +206,8 @@ export class AgentSessionService {
       total_break_time: 0,
       total_calls_handled: 0,
       avg_handle_time: 0,
-      total_talk_time: 0
+      total_talk_time: 0,
+      by_company: {} as Record<number, any>
     };
 
     sessions.forEach(session => {
@@ -181,6 +219,21 @@ export class AgentSessionService {
       metrics.total_break_time += session.total_break_time;
       metrics.total_calls_handled += session.calls_handled;
       metrics.total_talk_time += session.total_talk_time;
+
+      // Group by company
+      if (!metrics.by_company[session.company_id]) {
+        metrics.by_company[session.company_id] = {
+          sessions: 0,
+          time_online: 0,
+          calls_handled: 0,
+          talk_time: 0
+        };
+      }
+      
+      metrics.by_company[session.company_id].sessions++;
+      metrics.by_company[session.company_id].time_online += sessionDuration;
+      metrics.by_company[session.company_id].calls_handled += session.calls_handled;
+      metrics.by_company[session.company_id].talk_time += session.total_talk_time;
     });
 
     if (metrics.total_calls_handled > 0) {
@@ -190,16 +243,16 @@ export class AgentSessionService {
     return metrics;
   }
 
-  async handleCallCompleted(agentId: number, callDuration: number): Promise<void> {
-    // Find active session for the agent
-    const sessions = await AgentSession.findAll({
+
+  async handleCallCompleted(agentId: number, companyId: number, callDuration: number): Promise<void> {
+    // Find active session for the agent in the specific company
+    const activeSession = await AgentSession.findOne({
       where: { 
-        user_id: agentId
+        user_id: agentId,
+        company_id: companyId,
+        ended_at: { [Op.is]: null }
       } as WhereOptions<AgentSession>
     });
-
-    // Find the first session that hasn't ended
-    const activeSession = sessions.find(s => !s.ended_at);
 
     if (activeSession) {
       activeSession.calls_handled += 1;

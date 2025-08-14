@@ -4,7 +4,6 @@ export enum UserRole {
   MANAGER = 'manager',              // Manage numbers, calls, forms, messaging, reporting, integrations
   REPORTING = 'reporting',          // View reports, tag leads, place calls, send/receive messages
   AGENT = 'agent',                  // Place calls, send/receive messages
-  USER = 'user'                     // Placeholder for future roles
 }
 
 export enum CompanyStatus {

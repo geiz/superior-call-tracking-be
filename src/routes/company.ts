@@ -10,7 +10,7 @@ router.post('/', CompanyController.createCompany.bind(CompanyController));
 // Add routes:
 router.post('/invite', authorize(UserRole.ADMIN, UserRole.MANAGER), CompanyController.inviteUser.bind(CompanyController));
 router.post('/accept-invitation', CompanyController.acceptInvitation.bind(CompanyController));
-router.post('/switch', authenticate, CompanyController.switchCompany);
+// router.post('/switch', authenticate, CompanyController.switchCompany);
 router.get('/usage', authenticate, requireAccountAdmin, async (req, res) => {
     const stats = await UsageService.getUsageStats(Number(req.user!.account_id));
     res.json(stats);

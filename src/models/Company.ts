@@ -11,9 +11,10 @@ import {
   UpdatedAt,
   BeforeCreate,
   ForeignKey,
-  BelongsTo
+  BelongsTo,
+  BelongsToMany
 } from 'sequelize-typescript';
-import { CompanyStatus } from '../types/enums';
+import { CompanyStatus, UserRole } from '../types/enums';
 import User from './User';
 import TrackingNumber from './TrackingNumber';
 import Call from './Call';
@@ -22,7 +23,7 @@ import Webhook from './Webhook';
 import TextConversation from './TextConversation';
 import CustomerProfile from './CustomerProfile';
 import Account from './Account';
-
+import UserCompany from './UserCompany';
 
 interface CompanySettings {
   caller_id_lookup: boolean;
@@ -38,6 +39,7 @@ interface CompanySettings {
   createdAt: 'created_at',
   updatedAt: 'updated_at'
 })
+
 export default class Company extends Model<Company> {
 
   @ForeignKey(() => Account)
@@ -136,8 +138,11 @@ export default class Company extends Model<Company> {
   updated_at!: Date;
 
   // Associations
-  @HasMany(() => User)
+  @BelongsToMany(() => User, () => UserCompany)
   users!: User[];
+
+  @HasMany(() => UserCompany)
+  userCompanies!: UserCompany[];
 
   @HasMany(() => TrackingNumber)
   tracking_numbers!: TrackingNumber[];
@@ -200,5 +205,43 @@ export default class Company extends Model<Company> {
   isInTrial(): boolean {
     return this.status === CompanyStatus.TRIAL &&
       this.trial_ends_at ? this.trial_ends_at > new Date() : false;
+  }
+
+  // Helper methods
+  async addUser(userId: number, role: UserRole, invitedBy?: number): Promise<UserCompany> {
+    // Check if account can add more users
+    const account = await Account.findByPk(this.account_id);
+    if (!account) throw new Error('Account not found');
+
+    const currentUserCount = await UserCompany.count({
+      where: { 
+        company_id: this.id,
+        is_active: true
+      }
+    });
+
+    if (currentUserCount >= account.max_users_per_company) {
+      throw new Error(`User limit reached (${account.max_users_per_company})`);
+    }
+
+    return UserCompany.create({
+      user_id: userId,
+      company_id: this.id,
+      role,
+      invited_by: invitedBy,
+      is_default: currentUserCount === 0 // First user gets default
+    } as any);
+  }
+
+  async removeUser(userId: number): Promise<void> {
+    await UserCompany.update(
+      { is_active: false },
+      { 
+        where: { 
+          user_id: userId,
+          company_id: this.id
+        }
+      }
+    );
   }
 }

@@ -13,7 +13,8 @@ import {
   Default,
   BeforeCreate,
   CreatedAt,
-  UpdatedAt
+  UpdatedAt,
+  BelongsToMany
 } from 'sequelize-typescript';
 import bcrypt from 'bcryptjs';
 import { UserRole } from '../types/enums';
@@ -24,6 +25,7 @@ import Tag from './Tag';
 import TextMessage from './TextMessage';
 import UserInvitation from './UserInvitation';
 import Account from './Account';
+import UserCompany from './UserCompany';
 
 
 interface UserPreferences {
@@ -55,11 +57,6 @@ export default class User extends Model<User> {
   @Column(DataType.INTEGER)
   account_id?: number;
 
-  @ForeignKey(() => Company)
-  @AllowNull(false)
-  @Column(DataType.INTEGER)
-  company_id!: number;
-
   @Unique
   @AllowNull(false)
   @Column(DataType.STRING(255))
@@ -75,7 +72,6 @@ export default class User extends Model<User> {
   @Column(DataType.STRING(100))
   last_name?: string;
 
-  @Default(UserRole.USER)
   @Column(DataType.ENUM(...Object.values(UserRole)))
   role!: UserRole;
 
@@ -134,8 +130,11 @@ export default class User extends Model<User> {
   @BelongsTo(() => Account)
   account?: Account;
 
-  @BelongsTo(() => Company)
-  company!: Company;
+  @BelongsToMany(() => Company, () => UserCompany)
+  companies!: Company[];
+
+  @HasMany(() => UserCompany)
+  userCompanies!: UserCompany[];
 
   @HasMany(() => Call, 'agent_id')
   agent_calls!: Call[];
@@ -213,5 +212,50 @@ export default class User extends Model<User> {
     if (user.password_hash && !user.password_hash.startsWith('$2')) {
       user.password_hash = await bcrypt.hash(user.password_hash, 10);
     }
+  }
+
+  async getActiveCompanies(): Promise<Company[]> {
+    const userCompanies = await UserCompany.findAll({
+      where: { 
+        user_id: this.id,
+        is_active: true 
+      },
+      include: [Company]
+    });
+    return userCompanies.map(uc => uc.company);
+  }
+
+  async getDefaultCompany(): Promise<Company | null> {
+    const defaultUC = await UserCompany.findOne({
+      where: { 
+        user_id: this.id,
+        is_default: true,
+        is_active: true
+      },
+      include: [Company]
+    });
+    return defaultUC?.company || null;
+  }
+
+  async getRoleInCompany(companyId: number): Promise<UserRole | null> {
+    const userCompany = await UserCompany.findOne({
+      where: { 
+        user_id: this.id,
+        company_id: companyId,
+        is_active: true
+      }
+    });
+    return userCompany?.role || null;
+  }
+
+  async hasAccessToCompany(companyId: number): Promise<boolean> {
+    const userCompany = await UserCompany.findOne({
+      where: { 
+        user_id: this.id,
+        company_id: companyId,
+        is_active: true
+      }
+    });
+    return !!userCompany;
   }
 }

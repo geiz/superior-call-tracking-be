@@ -58,44 +58,6 @@ class CompanyController {
   }
 }
 
-async switchCompany(req: AuthRequest, res: Response): Promise<void> {
-  try {
-    const { company_id } = req.body;
-    
-    // Only account admins can switch between companies
-    if (req.user!.role !== UserRole.ADMIN) {
-      res.status(403).json({ error: 'Only account admins can switch companies' });
-      return;
-    }
-
-    const company = await Company.findOne({
-      where: {
-        id: company_id,
-        account_id: req.user!.account_id
-      }
-    });
-
-    if (!company) {
-      res.status(404).json({ error: 'Company not found or access denied' });
-      return;
-    }
-
-    // Generate new token with selected company
-    const token = signToken({
-      id: req.user!.id,
-      email: req.user!.email,
-      role: req.user!.role,
-      account_id: req.user!.account_id,
-      company_id: req.user!.company_id
-    });
-
-    res.json({ token, company });
-  } catch (error) {
-    console.error('Company switch error:', error);
-    res.status(500).json({ error: 'Failed to switch company' });
-  }
-}
-
   // Add to CompanyController class:
   async inviteUser(req: AuthRequest, res: Response): Promise<void> {
     try {
