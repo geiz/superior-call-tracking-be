@@ -1,0 +1,227 @@
+# 1. Install dependencies
+cd backend
+npm install
+
+# 2. Set up environment
+cp .env.example .env
+# Edit .env with Digital Ocean credentials
+
+# 3. Test connection
+npm run test:connection
+
+# 4. Set up database
+npm run db:setup
+
+# 5. Start development server
+npm run dev
+
+
+setup guide
+
+# Backend Setup Guide
+
+## Prerequisites
+
+1. Node.js (v16 or higher)
+2. PostgreSQL database (Digital Ocean managed database in your case)
+3. Redis (for queue management)
+4. FFmpeg (optional, for call recording processing)
+
+## Setup Steps
+
+### 1. Install Dependencies
+
+```bash
+cd backend
+npm install
+```
+
+### 2. Configure Environment Variables
+
+Copy the example environment file:
+
+```bash
+cp example.env .env
+```
+
+Edit `.env` and add your Digital Ocean database credentials:
+
+```env
+# Database
+DB_HOST=crc-db-do-user-21103766-0.j.db.ondigitalocean.com
+DB_PORT=25060
+DB_NAME=crc_db
+DB_USER=doadmin
+DB_PASSWORD=your_actual_password_here
+DB_SSL=true
+
+# Redis (local for development)
+REDIS_HOST=localhost
+REDIS_PORT=6379
+
+# JWT
+JWT_SECRET=your-secret-key-here-change-in-production
+JWT_EXPIRE=30d
+
+# Server
+PORT=3001
+NODE_ENV=development
+FRONTEND_URL=http://localhost:5173
+```
+
+### 3. Test Database Connection
+
+```bash
+npm run test:connection
+```
+
+This should output:
+```
+✅ Connected to PostgreSQL successfully!
+PostgreSQL version: PostgreSQL 15.x ...
+```
+
+### 4. Setup Database
+
+Run the database setup script:
+
+```bash
+npm run db:setup
+```
+
+This will:
+1. Create the database if it doesn't exist
+2. Run all migrations (create tables)
+3. Seed initial data (demo company and admin user)
+
+### 5. Start Development Server
+
+```bash
+npm run dev
+```
+
+The server will start on http://localhost:3001
+
+## Default Login Credentials
+
+- Email: `admin@demo.com`
+- Password: `admin123`
+
+## API Endpoints
+
+### Authentication
+- `POST /api/auth/login` - Login
+- `POST /api/auth/register` - Register new company
+- `GET /api/auth/me` - Get current user
+
+### Calls
+- `GET /api/calls` - List calls
+- `GET /api/calls/:id` - Get call details
+- `GET /api/calls/analytics` - Get call analytics
+
+### Tracking Numbers
+- `GET /api/tracking` - List tracking numbers
+- `POST /api/tracking` - Create tracking number
+- `PUT /api/tracking/:id` - Update tracking number
+
+### Tags
+- `GET /api/tags` - List tags
+- `POST /api/tags` - Create tag
+- `PUT /api/tags/:id` - Update tag
+
+### Text Messages
+- `GET /api/texts/conversations` - List conversations
+- `POST /api/texts/send` - Send message
+
+### Customer Journey
+- `GET /api/journey/customer` - Get customer journey
+- `POST /api/journey/track/pageview` - Track page view
+- `POST /api/journey/track/form` - Track form submission
+
+## Troubleshooting
+
+### Database Connection Issues
+
+1. **SSL Certificate Error**: Make sure `DB_SSL=true` is set in your `.env` file
+2. **Authentication Failed**: Double-check your password from Digital Ocean
+3. **Connection Timeout**: Ensure your IP is whitelisted in Digital Ocean's trusted sources
+
+### Port Already in Use
+
+If port 3001 is already in use:
+```bash
+# Find process using port
+lsof -i :3001
+
+# Kill the process
+kill -9 <PID>
+
+# Or use a different port
+PORT=3002 npm run dev
+```
+
+### Redis Not Running
+
+Install and start Redis:
+```bash
+# macOS
+brew install redis
+brew services start redis
+
+# Ubuntu/Debian
+sudo apt-get install redis-server
+sudo systemctl start redis
+```
+
+### TypeScript Compilation Errors
+
+If you see TypeScript errors:
+```bash
+# Clear TypeScript cache
+rm -rf node_modules/.cache
+
+# Reinstall dependencies
+rm -rf node_modules package-lock.json
+npm install
+
+# Try building
+npm run build
+```
+
+## Production Deployment
+
+For production deployment:
+
+1. Build the TypeScript code:
+```bash
+npm run build
+```
+
+2. Set production environment variables
+3. Start with PM2 or similar process manager:
+```bash
+pm2 start dist/app.js --name crc-backend
+```
+
+## Testing with cURL
+
+Test the API:
+
+```bash
+# Login
+curl -X POST http://localhost:3001/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"admin@demo.com","password":"admin123"}'
+
+# Get calls (replace TOKEN with actual token from login)
+curl http://localhost:3001/api/calls \
+  -H "Authorization: Bearer TOKEN"
+```
+
+## Next Steps
+
+1. Set up the frontend to connect to this backend
+2. Configure FreeSWITCH for SIP integration
+3. Set up webhooks for real-time call events
+4. Configure SMS provider (Twilio/Plivo) for text messaging
+5. Set up S3 or similar for call recording storage
