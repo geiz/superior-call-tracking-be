@@ -66,6 +66,7 @@ const corsOptions = {
       // Firebase hosting
       'https://superior-call-track.web.app',
       'https://superior-call-track.firebaseapp.com',
+      'https://app.superiorcall.io',
       
       // ngrok URLs (add all your ngrok URLs)
       'https://f04de7477bc3.ngrok-free.app',
@@ -137,6 +138,7 @@ app.use(helmet({
         "https://localhost:*",
         "https://*.ngrok-free.app",
         "https://*.firebaseapp.com",
+        "https://*.superiorcall.io",
         "https://*.web.app"
       ],
       fontSrc: ["'self'", "data:"],
