@@ -426,45 +426,18 @@ export class InvitationController {
   try {
     const company = await Company.findByPk(invitation.company_id);
     
-    await BrevoService.sendEmail({
+    await BrevoService.sendInvitationEmail({
       to: invitation.email,
-      toName: `${invitation.first_name} ${invitation.last_name}`,
-      subject: `You've been invited to join ${company?.name || 'CallRail Clone'}`,
-      textContent: `
-        Hi ${invitation.first_name},
-
-        ${inviter.first_name} ${inviter.last_name} has invited you to join ${company?.name || 'CallRail Clone'} as a ${invitation.role}.
-
-        Your login credentials:
-        Email: ${invitation.email}
-        Password: ${password}
-
-        Please log in at: ${process.env.FRONTEND_URL}/login
-
-        This invitation will expire in 7 days.
-
-        Best regards,
-        The ${company?.name || 'CallRail Clone'} Team
-      `,
-      htmlContent: `
-        <h2>Welcome to ${company?.name || 'CallRail Clone'}!</h2>
-        <p>Hi ${invitation.first_name},</p>
-        <p>${inviter.first_name} ${inviter.last_name} has invited you to join <strong>${company?.name || 'CallRail Clone'}</strong> as a <strong>${invitation.role}</strong>.</p>
-        
-        <div style="background: #f5f5f5; padding: 20px; border-radius: 5px; margin: 20px 0;">
-          <h3>Your Login Credentials:</h3>
-          <p><strong>Email:</strong> ${invitation.email}<br>
-          <strong>Password:</strong> ${password}</p>
-        </div>
-        
-        <p><a href="${process.env.FRONTEND_URL}/login" style="background: #4CAF50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">Login Now</a></p>
-        
-        <p><em>This invitation will expire in 7 days.</em></p>
-        
-        <p>Best regards,<br>
-        The ${company?.name || 'CallRail Clone'} Team</p>
-      `
+      firstName: invitation.first_name,
+      lastName: invitation.last_name,
+      inviterName: `${inviter.first_name} ${inviter.last_name}`,
+      companyName: company?.name || 'Superior Call Tracking',
+      role: invitation.role,
+      email: invitation.email,
+      password
     });
+
+    console.log('✅ Invitation email sent to:', invitation.email);
   } catch (error) {
     console.error('Failed to send invitation email:', error);
     throw error;

@@ -201,7 +201,13 @@ export class UsersController {
 
       // Send welcome email with credentials if requested
       if (send_welcome_email) {
-        await this.sendWelcomeEmail(user, tempPassword);
+        await BrevoService.sendWelcomeEmail({
+          to: user.email,
+          firstName: user.first_name || '',
+          lastName: user.last_name || '',
+          email: user.email,
+          password: tempPassword
+        });
       }
 
       // Return user without password
@@ -380,7 +386,11 @@ export class UsersController {
       await user.save();
 
       if (send_email) {
-        await this.sendPasswordResetEmail(user, tempPassword);
+       await BrevoService.sendPasswordResetEmail({
+          to: user.email,
+          firstName: user.first_name || user.email,
+          tempPassword
+        });
       }
 
       res.json({
@@ -446,68 +456,6 @@ export class UsersController {
       password += chars.charAt(Math.floor(Math.random() * chars.length));
     }
     return password;
-  }
-
-private async sendWelcomeEmail(user: User, tempPassword: string): Promise<void> {
-  try {
-    await BrevoService.sendEmail({
-      to: user.email,
-      toName: user.full_name,
-      subject: 'Welcome to Superior Call Tracking',
-      textContent: `
-        Welcome ${user.first_name}!
-        
-        Your account has been created. Here are your login credentials:
-        
-        Email: ${user.email}
-        Temporary Password: ${tempPassword}
-        
-        Please log in and change your password as soon as possible.
-        
-        Login at: ${process.env.FRONTEND_URL}/login
-      `,
-      htmlContent: `
-        <h2>Welcome ${user.first_name}!</h2>
-        <p>Your account has been created. Here are your login credentials:</p>
-        <p><strong>Email:</strong> ${user.email}<br>
-        <strong>Temporary Password:</strong> ${tempPassword}</p>
-        <p>Please log in and change your password as soon as possible.</p>
-        <p><a href="${process.env.FRONTEND_URL}/login">Login here</a></p>
-      `
-    });
-  } catch (error) {
-    console.error('Failed to send welcome email:', error);
-  }
-}
-
-
-private async sendPasswordResetEmail(user: User, tempPassword: string): Promise<void> {
-  try {
-    await BrevoService.sendEmail({
-      to: user.email,
-      toName: user.full_name,
-      subject: 'Password Reset',
-      textContent: `
-        Hi ${user.first_name},
-        
-        Your password has been reset. Here is your new temporary password:
-        
-        Temporary Password: ${tempPassword}
-        
-        Please log in and change your password as soon as possible.
-        
-        Login at: ${process.env.FRONTEND_URL}/login
-      `,
-      htmlContent: `
-        <h2>Hi ${user.first_name},</h2>
-        <p>Your password has been reset. Here is your new temporary password:</p>
-        <p><strong>Temporary Password:</strong> ${tempPassword}</p>
-        <p>Please log in and change your password as soon as possible.</p>
-        <p><a href="${process.env.FRONTEND_URL}/login">Login here</a></p>
-      `
-    });
-  } catch (error) {
-    console.error('Failed to send password reset email:', error);
   }
 }
 

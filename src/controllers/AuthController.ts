@@ -108,7 +108,7 @@ class AuthController {
         undefined, // socketId
         selectedCompany.company_id // Pass the company ID
       );
-        
+
       const token = signToken({
         id: user.id,
         email: user.email,
@@ -143,92 +143,92 @@ class AuthController {
   }
 
   async switchCompany(req: AuthRequest, res: Response): Promise<void> {
-  try {
-    const { company_id } = req.body;
-    
-    // Check if account admin
-    if (req.user?.role == UserRole.ADMIN) {
-      const company = await Company.findOne({
-        where: {
-          id: company_id,
-          account_id: req.user.account_id
-        }
-      });
+    try {
+      const { company_id } = req.body;
 
-      if (!company) {
-        res.status(404).json({ error: 'Company not found' });
+      // Check if account admin
+      if (req.user?.role == UserRole.ADMIN) {
+        const company = await Company.findOne({
+          where: {
+            id: company_id,
+            account_id: req.user.account_id
+          }
+        });
+
+        if (!company) {
+          res.status(404).json({ error: 'Company not found' });
+          return;
+        }
+
+        const token = signToken({
+          ...req.user,
+          company_id: company.id,
+          role: UserRole.ADMIN // Account admins always have admin role
+        });
+
+        res.json({
+          token,
+          company,
+          role: UserRole.ADMIN
+        });
         return;
       }
 
+      // Regular user switching company
+      const user = await User.findByPk(req.user!.id);
+      if (!user) {
+        res.status(404).json({ error: 'User not found' });
+        return;
+      }
+
+      const userCompany = await UserCompany.findOne({
+        where: {
+          user_id: user.id,
+          company_id,
+          is_active: true
+        },
+        include: [Company]
+      });
+
+      if (!userCompany) {
+        res.status(403).json({ error: 'Access denied to this company' });
+        return;
+      }
+
+      // Update default if requested
+      const { set_as_default } = req.body;
+      if (set_as_default) {
+        // Remove default from other companies
+        await UserCompany.update(
+          { is_default: false },
+          { where: { user_id: user.id } }
+        );
+
+        // Set new default
+        await userCompany.update({ is_default: true });
+      }
+
       const token = signToken({
-        ...req.user,
-        company_id: company.id,
-        role: UserRole.ADMIN // Account admins always have admin role
+        id: user.id,
+        email: user.email,
+        role: userCompany.role,
+        account_id: user.account_id,
+        company_id: userCompany.company_id,
+        session_id: req.user?.session_id,
+        is_account_admin: false
       });
 
-      res.json({ 
-        token, 
-        company,
-        role: UserRole.ADMIN
+      res.json({
+        token,
+        company: userCompany.company,
+        role: userCompany.role
       });
-      return;
+    } catch (error) {
+      console.error('Company switch error:', error);
+      res.status(500).json({ error: 'Failed to switch company' });
     }
-
-    // Regular user switching company
-    const user = await User.findByPk(req.user!.id);
-    if (!user) {
-      res.status(404).json({ error: 'User not found' });
-      return;
-    }
-
-    const userCompany = await UserCompany.findOne({
-      where: {
-        user_id: user.id,
-        company_id,
-        is_active: true
-      },
-      include: [Company]
-    });
-
-    if (!userCompany) {
-      res.status(403).json({ error: 'Access denied to this company' });
-      return;
-    }
-
-    // Update default if requested
-    const { set_as_default } = req.body;
-    if (set_as_default) {
-      // Remove default from other companies
-      await UserCompany.update(
-        { is_default: false },
-        { where: { user_id: user.id } }
-      );
-      
-      // Set new default
-      await userCompany.update({ is_default: true });
-    }
-
-    const token = signToken({
-      id: user.id,
-      email: user.email,
-      role: userCompany.role,
-      account_id: user.account_id,
-      company_id: userCompany.company_id,
-      session_id: req.user?.session_id,
-      is_account_admin: false
-    });
-
-    res.json({ 
-      token, 
-      company: userCompany.company,
-      role: userCompany.role
-    });
-  } catch (error) {
-    console.error('Company switch error:', error);
-    res.status(500).json({ error: 'Failed to switch company' });
   }
-}
-  
+
 
   /**
    * User registration with email notification
@@ -261,73 +261,19 @@ class AuthController {
       // No company or user created at this point
       // Admin will create companies after login
 
-      // Add email sending:
-try {
-  await BrevoService.sendEmail({
-    to: email,
-    toName: `${first_name} ${last_name}`,
-    subject: 'Welcome to Superior Call Tracking - Account Created',
-    textContent: `
-Hi ${first_name}!
-
-Welcome to Superior Call Tracking! Your account has been successfully created.
-
-Your Login Credentials:
-------------------------
-Email: ${email}
-Password: ${password}
-
-You can log in at: ${process.env.FRONTEND_URL || 'https://superior-call-track.web.app/'}/login
-
-Next steps:
-1. Log in to your account
-2. Create your first company
-3. Set up tracking numbers
-4. Start tracking calls!
-
-Best regards,
-The Superior Call Tracking Team
-    `.trim(),
-    htmlContent: `
-<!DOCTYPE html>
-<html>
-<head>
-  <style>
-    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-    .header { background: #4F46E5; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }
-    .content { background: #f9f9f9; padding: 30px; border: 1px solid #ddd; }
-    .credentials { background: #fff; padding: 20px; border-radius: 5px; margin: 20px 0; }
-    .button { background: #4F46E5; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block; margin-top: 20px; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <h1>Welcome to Superior Call Tracking!</h1>
-    </div>
-    <div class="content">
-      <h2>Hi ${first_name}! 👋</h2>
-      <p>Your account has been successfully created. You're now ready to start tracking calls and optimizing your marketing!</p>
-      <div class="credentials">
-        <h3>Your Login Credentials:</h3>
-        <p><strong>Email:</strong> ${email}<br>
-        <strong>Password:</strong> ${password}</p>
-      </div>
-      <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/login" class="button">Login to Your Account</a>
-    </div>
-  </div>
-</body>
-</html>
-    `.trim()
-  });
-  console.log('Welcome email sent to:', email);
-} catch (emailError) {
-  console.error('Failed to send welcome email:', emailError);
-  // Don't fail registration if email fails
-}
-
-      // Mail JET!
+      try {
+        await BrevoService.sendWelcomeEmail({
+          to: email,
+          firstName: first_name,
+          lastName: last_name,
+          email,
+          password // The plain text password before hashing
+        });
+        console.log('Welcome email sent to:', email);
+      } catch (emailError) {
+        console.error('Failed to send welcome email:', emailError);
+        // Don't fail registration if email fails
+      }
 
       const token = signToken({
         id: account.id,
@@ -356,46 +302,46 @@ The Superior Call Tracking Team
   }
 
   async getUserCompanies(req: AuthRequest, res: Response): Promise<void> {
-  try {
-    // Account admin sees all companies in account
-    if (req.user?.role == UserRole.ADMIN) {
-      const account = await Account.findByPk(req.user.account_id, {
+    try {
+      // Account admin sees all companies in account
+      if (req.user?.role == UserRole.ADMIN) {
+        const account = await Account.findByPk(req.user.account_id, {
+          include: [Company]
+        });
+
+        res.json({
+          companies: account?.companies || [],
+          selected_company_id: req.user.company_id,
+          is_account_admin: true
+        });
+        return;
+      }
+
+      // Regular user sees their companies
+      const userCompanies = await UserCompany.findAll({
+        where: {
+          user_id: req.user!.id,
+          is_active: true
+        },
         include: [Company]
       });
-      
+
       res.json({
-        companies: account?.companies || [],
-        selected_company_id: req.user.company_id,
-        is_account_admin: true
+        companies: userCompanies.map(uc => ({
+          id: uc.company.id,
+          name: uc.company.name,
+          role: uc.role,
+          is_default: uc.is_default,
+          joined_at: uc.joined_at
+        })),
+        selected_company_id: req.user!.company_id,
+        is_account_admin: false
       });
-      return;
+    } catch (error) {
+      console.error('Error fetching user companies:', error);
+      res.status(500).json({ error: 'Failed to fetch companies' });
     }
-
-    // Regular user sees their companies
-    const userCompanies = await UserCompany.findAll({
-      where: {
-        user_id: req.user!.id,
-        is_active: true
-      },
-      include: [Company]
-    });
-
-    res.json({
-      companies: userCompanies.map(uc => ({
-        id: uc.company.id,
-        name: uc.company.name,
-        role: uc.role,
-        is_default: uc.is_default,
-        joined_at: uc.joined_at
-      })),
-      selected_company_id: req.user!.company_id,
-      is_account_admin: false
-    });
-  } catch (error) {
-    console.error('Error fetching user companies:', error);
-    res.status(500).json({ error: 'Failed to fetch companies' });
   }
-}
 
   /**
    * Logout

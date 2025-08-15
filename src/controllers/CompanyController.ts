@@ -7,86 +7,99 @@ import redisClient from '../config/redis';  // Add this line
 import bcrypt from 'bcryptjs';
 import { signToken } from '../config/jwt';
 import BrevoService from '../services/BrevoService';
+import { generateRandomPassword } from "../utils/helpers";
+import UserCompany from '../models/UserCompany'; // adjust path if needed
 
 class CompanyController {
   async createCompany(req: AuthRequest, res: Response): Promise<void> {
-  try {
-    const { company_name, subdomain } = req.body;
-    
-    // Only account-level admins can create companies
-    if (req.user!.role !== UserRole.ADMIN) {
-      res.status(403).json({ error: 'Only account admins can create companies' });
-      return;
-    }
+    try {
+      const { company_name, subdomain } = req.body;
 
-    const account = await Account.findByPk(req.user!.account_id, {
-      include: [Company]
-    });
-
-    if (!account) {
-      res.status(404).json({ error: 'Account not found' });
-      return;
-    }
-
-    // Check company limit
-    if (!account.canCreateCompany()) {
-      res.status(400).json({ 
-        error: 'Company limit reached',
-        limit: account.max_companies,
-        current: account.companies?.length || 0
-      });
-      return;
-    }
-
-    const company = await Company.create({
-      account_id: account.id,
-      name: company_name,
-      subdomain: subdomain || `${company_name.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`,
-      sip_domain: `${subdomain}.pbx.crc.com`,
-      status: CompanyStatus.ACTIVE,
-      timezone: 'America/New_York',
-      settings: {
-        caller_id_lookup: true,
-        spam_detection: true,
-        call_scoring: true
+      // Only account-level admins can create companies
+      if (req.user!.role !== UserRole.ADMIN) {
+        res.status(403).json({ error: 'Only account admins can create companies' });
+        return;
       }
-    } as any);
 
-    res.status(201).json({ company });
-  } catch (error) {
-    console.error('Company creation error:', error);
-    res.status(500).json({ error: 'Failed to create company' });
+      const account = await Account.findByPk(req.user!.account_id, {
+        include: [Company]
+      });
+
+      if (!account) {
+        res.status(404).json({ error: 'Account not found' });
+        return;
+      }
+
+      // Check company limit
+      if (!account.canCreateCompany()) {
+        res.status(400).json({
+          error: 'Company limit reached',
+          limit: account.max_companies,
+          current: account.companies?.length || 0
+        });
+        return;
+      }
+
+      const company = await Company.create({
+        account_id: account.id,
+        name: company_name,
+        subdomain: subdomain || `${company_name.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`,
+        sip_domain: `${subdomain}.pbx.crc.com`,
+        status: CompanyStatus.ACTIVE,
+        timezone: 'America/New_York',
+        settings: {
+          caller_id_lookup: true,
+          spam_detection: true,
+          call_scoring: true
+        }
+      } as any);
+
+      res.status(201).json({ company });
+    } catch (error) {
+      console.error('Company creation error:', error);
+      res.status(500).json({ error: 'Failed to create company' });
+    }
   }
-}
 
   // Add to CompanyController class:
   async inviteUser(req: AuthRequest, res: Response): Promise<void> {
     try {
-      const { email, role = UserRole.USER } = req.body;
+      const { email, role = UserRole } = req.body;
       const companyId = req.user!.company_id;
 
       // Check if user is admin/manager
-      if (req.user!.role !== UserRole.ADMIN && req.user!.role !== UserRole.MANAGER) {
+      if (![UserRole.ADMIN, UserRole.MANAGER].includes(req.user!.role)) {
         res.status(403).json({ error: 'Only admins and managers can invite users' });
         return;
       }
 
-      // Check if account exists
-      let account = await Account.findOne({ where: { email } });
-
       // Check if user already has access to this company
-      if (account) {
-        const existingUser = await User.findOne({
-          where: { account_id: account.id, company_id: companyId }
-        });
+      const company = await Company.findByPk(companyId);
+      if (!company) {
+        res.status(404).json({ error: 'Company not found' });
+        return;
+      }
 
-        if (existingUser) {
-          res.status(400).json({ error: 'User already has access to this company' });
-          return;
+      // Does an account already exist for this email?
+      const account = await Account.findOne({ where: { email } });
+
+      if (account) {
+        // If there's already a user row for this account (any company), get it
+        const existingUserForAccount = await User.findOne({ where: { account_id: account.id } });
+
+        if (existingUserForAccount) {
+          // Check pivot to see if they already have access to this company
+          const existingAccess = await UserCompany.findOne({
+            where: { user_id: existingUserForAccount.id, company_id: companyId, is_active: true }
+          });
+
+          if (existingAccess) {
+            res.status(400).json({ error: 'User already has access to this company' });
+            return;
+          }
         }
       }
 
-      const company = await Company.findByPk(companyId);
       const inviteToken = uuidv4();
 
       // Store invitation in cache/database
@@ -103,22 +116,28 @@ class CompanyController {
         })
       );
 
-      // TODO: Send email with invitation link
-      console.log(`Invitation link: ${process.env.FRONTEND_URL}/invite/${inviteToken}`);
+      // Generate a temporary password to include in the email
+      const tempPassword = generateRandomPassword(12);
 
-      await BrevoService.sendEmail({
-        to: email,
-        toName: `${req.body.first_name} ${req.body.last_name}`,
-        subject: `You've been invited to join ${company?.name || 'Superior Call Tracking'}`,
-        textContent: `Hi ${req.body.first_name}, you've been added!`, // Keep existing content
-        htmlContent: `<h2>Welcome to ${company?.name || 'Superior Call Tracking'}!</h2>`, // Keep existing content
-        from: 'david.shi@superiorplumbing.ca',
-        fromName: 'Superior Call Tracking'
-      });
+      // Send invitation via Brevo
+      try {
+        await BrevoService.sendInvitationEmail({
+          to: email,
+          toName: `${req.body.first_name || ''} ${req.body.last_name || ''}`.trim(),
+          companyName: company.name,
+          role: role,
+          email: email,
+          password: tempPassword
+        });
+      } catch (e) {
+        console.error(`Error while sending Brevo company invitation:`, e);
+        // Optional: return 502 if email is mandatory
+        // res.status(502).json({ error: 'Failed to send invitation email' }); return;
+      }
 
       res.json({
         message: 'Invitation sent',
-        invite_token: inviteToken // Remove in production
+        invite_token: inviteToken // TODO: remove in production
       });
     } catch (error) {
       console.error('Invitation error:', error);
