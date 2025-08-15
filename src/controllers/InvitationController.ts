@@ -99,6 +99,30 @@ export class InvitationController {
     }
 
     // Send invitation email...
+    try {
+  const company = await Company.findByPk(companyIds[0]);
+  
+  await MailjetService.sendEmail({
+    to: email,
+    toName: `${first_name} ${last_name}`,
+    subject: `You've been invited to join ${company?.name || 'Superior Call Tracking'}`,
+    textContent: `
+Hi ${first_name}
+    `.trim(),
+    htmlContent: `
+<h2>Welcome to ${company?.name || 'Superior Call Tracking'}!</h2>
+<p>Hi </p>
+
+    `.trim(),
+    from: 'david.shi@superiorplumbing.ca',
+    fromName: 'Superior Call Tracking',
+    replyTo: 'david.shi@superiorplumbing.ca',
+  });
+  
+  console.log('✅ Invitation email sent to:', email);
+} catch (emailError) {
+  console.error('❌ Failed to send invitation email:', emailError);
+}
     
     res.status(201).json({
       user: {

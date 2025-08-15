@@ -1,7 +1,7 @@
 {
   "name": "callrail-backend",
   "version": "1.0.0",
-  "description": "CallRail Clone Backend",
+  "description": "Superior Call Tracking Backend",
   "main": "dist/app.js",
   "scripts": {
     "dev": "nodemon",

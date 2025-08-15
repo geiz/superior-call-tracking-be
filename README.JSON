@@ -15,213 +15,1233 @@ npm run db:setup
 # 5. Start development server
 npm run dev
 
+# Superior Call Tracking API Documentation
 
-setup guide
+## Base URL
+- Development: `http://localhost:3001/api`
+- Production: `https://your-domain.com/api`
 
-# Backend Setup Guide
-
-## Prerequisites
-
-1. Node.js (v16 or higher)
-2. PostgreSQL database (Digital Ocean managed database in your case)
-3. Redis (for queue management)
-4. FFmpeg (optional, for call recording processing)
-
-## Setup Steps
-
-### 1. Install Dependencies
-
-```bash
-cd backend
-npm install
+## Authentication
+Most endpoints require JWT Bearer token authentication.
+```
+Authorization: Bearer <token>
 ```
 
-### 2. Configure Environment Variables
+---
 
-Copy the example environment file:
+## Authentication Endpoints
 
-```bash
-cp example.env .env
+### POST /auth/register
+Register a new account (creates admin account without company).
+
+**Request:**
+```json
+{
+  "email": "admin@company.com",
+  "password": "SecurePass123!",
+  "first_name": "John",
+  "last_name": "Doe",
+  "phone": "+14165551234"
+}
 ```
 
-Edit `.env` and add your Digital Ocean database credentials:
-
-```env
-# Database
-DB_HOST=crc-db-do-user-21103766-0.j.db.ondigitalocean.com
-DB_PORT=25060
-DB_NAME=crc_db
-DB_USER=doadmin
-DB_PASSWORD=your_actual_password_here
-DB_SSL=true
-
-# Redis (local for development)
-REDIS_HOST=localhost
-REDIS_PORT=6379
-
-# JWT
-JWT_SECRET=your-secret-key-here-change-in-production
-JWT_EXPIRE=30d
-
-# Server
-PORT=3001
-NODE_ENV=development
-FRONTEND_URL=http://localhost:5173
+**Response:**
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiIs...",
+  "account": {
+    "id": 1,
+    "email": "admin@company.com",
+    "first_name": "John",
+    "last_name": "Doe",
+    "plan_type": "trial",
+    "trial_ends_at": "2024-02-01T00:00:00.000Z"
+  },
+  "message": "Account created successfully. Please create a company to get started."
+}
 ```
 
-### 3. Test Database Connection
+### POST /auth/login
+Login with email and password.
 
-```bash
-npm run test:connection
+**Request:**
+```json
+{
+  "email": "user@company.com",
+  "password": "password123",
+  "remember_me": true
+}
 ```
 
-This should output:
-```
-✅ Connected to PostgreSQL successfully!
-PostgreSQL version: PostgreSQL 15.x ...
-```
-
-### 4. Setup Database
-
-Run the database setup script:
-
-```bash
-npm run db:setup
-```
-
-This will:
-1. Create the database if it doesn't exist
-2. Run all migrations (create tables)
-3. Seed initial data (demo company and admin user)
-
-### 5. Start Development Server
-
-```bash
-npm run dev
-```
-
-The server will start on http://localhost:3001
-
-## Default Login Credentials
-
-- Email: `admin@demo.com`
-- Password: `admin123`
-
-## API Endpoints
-
-### Authentication
-- `POST /api/auth/login` - Login
-- `POST /api/auth/register` - Register new company
-- `GET /api/auth/me` - Get current user
-
-### Calls
-- `GET /api/calls` - List calls
-- `GET /api/calls/:id` - Get call details
-- `GET /api/calls/analytics` - Get call analytics
-
-### Tracking Numbers
-- `GET /api/tracking` - List tracking numbers
-- `POST /api/tracking` - Create tracking number
-- `PUT /api/tracking/:id` - Update tracking number
-
-### Tags
-- `GET /api/tags` - List tags
-- `POST /api/tags` - Create tag
-- `PUT /api/tags/:id` - Update tag
-
-### Text Messages
-- `GET /api/texts/conversations` - List conversations
-- `POST /api/texts/send` - Send message
-
-### Customer Journey
-- `GET /api/journey/customer` - Get customer journey
-- `POST /api/journey/track/pageview` - Track page view
-- `POST /api/journey/track/form` - Track form submission
-
-## Troubleshooting
-
-### Database Connection Issues
-
-1. **SSL Certificate Error**: Make sure `DB_SSL=true` is set in your `.env` file
-2. **Authentication Failed**: Double-check your password from Digital Ocean
-3. **Connection Timeout**: Ensure your IP is whitelisted in Digital Ocean's trusted sources
-
-### Port Already in Use
-
-If port 3001 is already in use:
-```bash
-# Find process using port
-lsof -i :3001
-
-# Kill the process
-kill -9 <PID>
-
-# Or use a different port
-PORT=3002 npm run dev
+**Response:**
+```json
+{
+  "token": "eyJhbGciOiJIUzI1NiIs...",
+  "user": {
+    "id": 1,
+    "email": "user@company.com",
+    "first_name": "John",
+    "last_name": "Doe",
+    "role": "admin",
+    "companies": [
+      {
+        "id": 1,
+        "name": "Company Name",
+        "role": "admin",
+        "is_default": true
+      }
+    ],
+    "selected_company": {
+      "id": 1,
+      "name": "Company Name"
+    }
+  }
+}
 ```
 
-### Redis Not Running
+### GET /auth/me
+Get current user information.
 
-Install and start Redis:
-```bash
-# macOS
-brew install redis
-brew services start redis
-
-# Ubuntu/Debian
-sudo apt-get install redis-server
-sudo systemctl start redis
+**Response:**
+```json
+{
+  "id": 1,
+  "email": "user@company.com",
+  "first_name": "John",
+  "last_name": "Doe",
+  "role": "admin",
+  "companies": [...]
+}
 ```
 
-### TypeScript Compilation Errors
+### POST /auth/logout
+Logout and end session.
 
-If you see TypeScript errors:
-```bash
-# Clear TypeScript cache
-rm -rf node_modules/.cache
-
-# Reinstall dependencies
-rm -rf node_modules package-lock.json
-npm install
-
-# Try building
-npm run build
+**Response:**
+```json
+{
+  "message": "Logged out successfully"
+}
 ```
 
-## Production Deployment
+### PUT /auth/change-password
+Change current user's password.
 
-For production deployment:
-
-1. Build the TypeScript code:
-```bash
-npm run build
+**Request:**
+```json
+{
+  "current_password": "oldPassword123",
+  "new_password": "newSecurePass456!"
+}
 ```
 
-2. Set production environment variables
-3. Start with PM2 or similar process manager:
-```bash
-pm2 start dist/app.js --name crc-backend
+**Response:**
+```json
+{
+  "message": "Password changed successfully"
+}
 ```
 
-## Testing with cURL
+---
 
-Test the API:
+## Company Management
 
-```bash
-# Login
-curl -X POST http://localhost:3001/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"admin@demo.com","password":"admin123"}'
+### POST /company
+Create a new company (Admin only).
 
-# Get calls (replace TOKEN with actual token from login)
-curl http://localhost:3001/api/calls \
-  -H "Authorization: Bearer TOKEN"
+**Request:**
+```json
+{
+  "company_name": "Superior Plumbing",
+  "subdomain": "superior-plumbing"
+}
 ```
 
-## Next Steps
+**Response:**
+```json
+{
+  "company": {
+    "id": 1,
+    "name": "Superior Plumbing",
+    "subdomain": "superior-plumbing",
+    "sip_domain": "superior-plumbing.pbx.crc.com",
+    "status": "active",
+    "timezone": "America/New_York"
+  }
+}
+```
 
-1. Set up the frontend to connect to this backend
-2. Configure FreeSWITCH for SIP integration
-3. Set up webhooks for real-time call events
-4. Configure SMS provider (Twilio/Plivo) for text messaging
-5. Set up S3 or similar for call recording storage
+### POST /company/invite
+Invite a user to the company.
+
+**Request:**
+```json
+{
+  "email": "newuser@email.com",
+  "role": "agent"
+}
+```
+
+**Response:**
+```json
+{
+  "message": "Invitation sent",
+  "invite_token": "uuid-token-here"
+}
+```
+
+### POST /company/switch
+Switch between companies for multi-company users.
+
+**Request:**
+```json
+{
+  "company_id": 2,
+  "set_as_default": true
+}
+```
+
+**Response:**
+```json
+{
+  "token": "new-jwt-token",
+  "company": {
+    "id": 2,
+    "name": "Second Company"
+  },
+  "role": "manager"
+}
+```
+
+---
+
+## User Management
+
+### GET /users
+Get all users in the company.
+
+**Query Parameters:**
+- `role`: Filter by role (admin, manager, agent, reporting)
+- `is_active`: Filter by active status (true/false)
+- `search`: Search by name or email
+- `page`: Page number (default: 1)
+- `limit`: Items per page (default: 50)
+
+**Response:**
+```json
+{
+  "users": [
+    {
+      "id": 1,
+      "email": "user@company.com",
+      "first_name": "John",
+      "last_name": "Doe",
+      "role": "agent",
+      "status": "active",
+      "invitation_pending": false
+    }
+  ],
+  "pagination": {
+    "total": 10,
+    "pages": 1,
+    "current_page": 1,
+    "per_page": 50
+  }
+}
+```
+
+### POST /users
+Create a new user (Admin only).
+
+**Request:**
+```json
+{
+  "email": "newuser@company.com",
+  "password": "TempPass123!",
+  "first_name": "Jane",
+  "last_name": "Smith",
+  "role": "agent",
+  "phone": "+14165552345",
+  "send_welcome_email": true
+}
+```
+
+**Response:**
+```json
+{
+  "user": {
+    "id": 2,
+    "email": "newuser@company.com",
+    "first_name": "Jane",
+    "last_name": "Smith",
+    "role": "agent"
+  },
+  "temp_password": "TempPass123!"
+}
+```
+
+### PUT /users/:id
+Update user information.
+
+**Request:**
+```json
+{
+  "first_name": "Jane",
+  "last_name": "Johnson",
+  "phone": "+14165559876"
+}
+```
+
+### DELETE /users/:id
+Deactivate a user (Admin only).
+
+### POST /users/:id/reset-password
+Reset user password (Admin only).
+
+**Request:**
+```json
+{
+  "send_email": true
+}
+```
+
+**Response:**
+```json
+{
+  "message": "Password reset successfully",
+  "temp_password": "NewTemp123!"
+}
+```
+
+---
+
+## Tracking Numbers
+
+### GET /tracking
+Get all tracking numbers.
+
+**Query Parameters:**
+- `status`: active, inactive, suspended
+- `source`: Source name
+- `campaign`: Campaign name
+- `page`: Page number
+- `limit`: Items per page
+
+**Response:**
+```json
+{
+  "tracking_numbers": [
+    {
+      "id": 1,
+      "phone_number": "+14165551234",
+      "friendly_name": "Google Ads - Toronto",
+      "source": "google",
+      "medium": "cpc",
+      "campaign": "plumbing-toronto",
+      "status": "active",
+      "sms_enabled": false,
+      "call_flow": {
+        "record_calls": true,
+        "timeout_seconds": 30,
+        "voicemail_enabled": true
+      }
+    }
+  ],
+  "pagination": {
+    "total": 5,
+    "page": 1,
+    "limit": 50,
+    "pages": 1
+  }
+}
+```
+
+### POST /tracking
+Create a tracking number.
+
+**Request:**
+```json
+{
+  "phone_number": "+14165551234",
+  "friendly_name": "Facebook Campaign",
+  "source": "facebook",
+  "medium": "social",
+  "campaign": "summer-2024",
+  "description": "Facebook summer campaign",
+  "sms_enabled": false,
+  "call_flow": {
+    "record_calls": true,
+    "timeout_seconds": 30,
+    "voicemail_enabled": true,
+    "voicemail_greeting": "Please leave a message."
+  }
+}
+```
+
+### GET /tracking/available
+Search available numbers from Twilio.
+
+**Query Parameters:**
+- `area_code`: Area code to search (e.g., "416")
+- `contains`: Partial number to search
+
+**Response:**
+```json
+{
+  "numbers": [
+    {
+      "phone_number": "+14165551234",
+      "friendly_name": "(416) 555-1234",
+      "locality": "Toronto",
+      "region": "ON",
+      "country": "CA",
+      "capabilities": {
+        "voice": true,
+        "sms": true,
+        "mms": false
+      },
+      "monthly_fee": 1.00,
+      "per_minute_rate": 0.0140
+    }
+  ]
+}
+```
+
+### POST /tracking/provision
+Purchase and provision a number from Twilio.
+
+**Request:**
+```json
+{
+  "phone_number": "+14165551234",
+  "friendly_name": "Main Line",
+  "source": "website",
+  "medium": "organic",
+  "campaign": "main",
+  "sms_enabled": true
+}
+```
+
+### DELETE /tracking/:id/release
+Release number back to Twilio (Admin only).
+
+### GET /tracking/:id/stats
+Get tracking number statistics.
+
+**Query Parameters:**
+- `date_from`: Start date (YYYY-MM-DD)
+- `date_to`: End date (YYYY-MM-DD)
+
+**Response:**
+```json
+{
+  "tracking_number": {
+    "id": 1,
+    "phone_number": "+14165551234",
+    "friendly_name": "Main Line"
+  },
+  "stats": {
+    "total_calls": 150,
+    "total_duration": 4500,
+    "avg_duration": 30,
+    "answered_calls": 120,
+    "first_time_calls": 45
+  }
+}
+```
+
+---
+
+## Calls
+
+### GET /calls
+Get call list with filters.
+
+**Query Parameters:**
+- `status`: completed, no_answer, busy, failed
+- `date_from`: Start date
+- `date_to`: End date
+- `tags`: Tag IDs (comma separated)
+- `tracking_number_id`: Filter by tracking number
+- `page`: Page number
+- `limit`: Items per page
+- `sort_by`: Field to sort by (default: start_time)
+- `sort_order`: ASC or DESC (default: DESC)
+
+**Response:**
+```json
+{
+  "calls": [
+    {
+      "id": 1,
+      "call_sid": "CALL_123456",
+      "caller_number": "+14165559876",
+      "caller_name": "John Doe",
+      "destination_number": "+14165551234",
+      "start_time": "2024-01-15T10:30:00Z",
+      "duration": 180,
+      "status": "completed",
+      "direction": "inbound",
+      "source": "google",
+      "campaign": "plumbing-toronto",
+      "is_first_call": true,
+      "recording": {
+        "id": 1,
+        "file_url": "https://storage.example.com/recording.mp3",
+        "duration": 180
+      },
+      "tracking_number": {
+        "id": 1,
+        "phone_number": "+14165551234",
+        "friendly_name": "Main Line"
+      },
+      "tags": [
+        {
+          "id": 1,
+          "name": "hot-lead",
+          "color": "#EF4444"
+        }
+      ]
+    }
+  ],
+  "pagination": {
+    "total": 250,
+    "page": 1,
+    "limit": 50,
+    "pages": 5
+  }
+}
+```
+
+### GET /calls/:id
+Get single call details.
+
+### GET /calls/:id/recording-url
+Get signed URL for call recording.
+
+**Query Parameters:**
+- `download`: true to get download URL
+
+**Response:**
+```json
+{
+  "url": "https://signed-url.example.com/recording.mp3",
+  "expires_in": 3600,
+  "recording_id": 1,
+  "duration": 180,
+  "format": "mp3"
+}
+```
+
+### POST /calls/:id/tags
+Add tags to a call.
+
+**Request:**
+```json
+{
+  "tag_ids": [1, 2, 3]
+}
+```
+
+### GET /calls/analytics
+Get call analytics.
+
+**Query Parameters:**
+- `from_date`: Start date
+- `to_date`: End date
+- `group_by`: day, week, month
+
+**Response:**
+```json
+{
+  "summary": {
+    "total_calls": 500,
+    "answered_calls": 400,
+    "missed_calls": 100,
+    "first_time_calls": 150,
+    "average_duration": 120,
+    "answer_rate": "80.0",
+    "unique_callers": 350
+  },
+  "calls_by_source": [
+    {
+      "source": "google",
+      "total": 200,
+      "answered": 160,
+      "conversion_rate": "80.00"
+    }
+  ],
+  "calls_by_day": [
+    {
+      "date": "2024-01-15",
+      "count": 25
+    }
+  ],
+  "calls_by_hour": [
+    {
+      "hour": 9,
+      "count": 45
+    }
+  ]
+}
+```
+
+---
+
+## Tags
+
+### GET /tags
+Get all tags.
+
+**Query Parameters:**
+- `search`: Search by name
+- `include_deleted`: Include deleted tags (true/false)
+- `with_usage`: Include usage count (true/false)
+
+**Response:**
+```json
+{
+  "tags": [
+    {
+      "id": 1,
+      "name": "hot-lead",
+      "color": "#EF4444",
+      "description": "High intent caller",
+      "usage_count": 45
+    }
+  ]
+}
+```
+
+### POST /tags
+Create a new tag.
+
+**Request:**
+```json
+{
+  "name": "new-customer",
+  "color": "#10B981",
+  "description": "Newly acquired customer"
+}
+```
+
+### PUT /tags/:id
+Update a tag.
+
+### DELETE /tags/:id
+Soft delete a tag.
+
+### POST /tags/bulk/apply
+Bulk apply tags to calls.
+
+**Request:**
+```json
+{
+  "call_ids": [1, 2, 3, 4, 5],
+  "tag_ids": [1, 2],
+  "action": "add"
+}
+```
+
+---
+
+## Text Messaging
+
+### GET /texts/conversations
+Get text conversations.
+
+**Query Parameters:**
+- `status`: active, archived, spam
+- `unread`: true to filter unread only
+- `page`: Page number
+- `limit`: Items per page
+
+**Response:**
+```json
+{
+  "conversations": [
+    {
+      "id": 1,
+      "customer_number": "+14165559876",
+      "customer_name": "John Doe",
+      "status": "active",
+      "unread_count": 2,
+      "last_message_at": "2024-01-15T14:30:00Z",
+      "tracking_number": {
+        "phone_number": "+14165551234",
+        "friendly_name": "Main Line"
+      },
+      "messages": [
+        {
+          "body": "Hi, I need a plumber",
+          "direction": "inbound",
+          "created_at": "2024-01-15T14:30:00Z"
+        }
+      ]
+    }
+  ],
+  "pagination": {
+    "total": 15,
+    "page": 1,
+    "limit": 50,
+    "pages": 1
+  }
+}
+```
+
+### GET /texts/conversations/:id/messages
+Get messages in a conversation.
+
+**Response:**
+```json
+{
+  "conversation": {
+    "id": 1,
+    "customer_number": "+14165559876"
+  },
+  "messages": [
+    {
+      "body": "Hi, I need a plumber",
+      "direction": "inbound",
+      "created_at": "2024-01-15T14:30:00Z"
+    },
+    {
+      "body": "Hello! How can we help you today?",
+      "direction": "outbound",
+      "created_at": "2024-01-15T14:32:00Z"
+    }
+  ],
+  "pagination": {
+    "total": 10,
+    "page": 1,
+    "limit": 50,
+    "pages": 1
+  }
+}
+```
+
+### POST /texts/send
+Send a text message.
+
+**Request:**
+```json
+{
+  "conversation_id": 1,
+  "body": "Thank you for contacting us. We'll send someone right away."
+}
+```
+
+OR
+
+```json
+{
+  "to_number": "+14165559876",
+  "body": "Hi! This is Superior Plumbing. How can we help?"
+}
+```
+
+---
+
+## Customer Journey
+
+### GET /journey/customer
+Get customer journey details.
+
+**Query Parameters:**
+- `phone_number`: Customer phone number
+- `email`: Customer email
+
+**Response:**
+```json
+{
+  "customer": {
+    "id": 1,
+    "phone_number": "+14165559876",
+    "email": "john@example.com",
+    "first_name": "John",
+    "last_name": "Doe",
+    "lead_status": "qualified",
+    "lifetime_value": 2500.00
+  },
+  "metrics": {
+    "total_interactions": 25,
+    "first_interaction": "2024-01-01T10:00:00Z",
+    "last_interaction": "2024-01-15T14:30:00Z",
+    "total_calls": 5,
+    "total_texts": 10,
+    "total_page_views": 8,
+    "total_forms": 2
+  },
+  "timeline": [
+    {
+      "type": "call",
+      "timestamp": "2024-01-15T10:30:00Z",
+      "data": {
+        "id": 1,
+        "duration": 180,
+        "status": "completed",
+        "source": "google",
+        "recording_url": "https://example.com/recording.mp3"
+      }
+    },
+    {
+      "type": "page_view",
+      "timestamp": "2024-01-15T09:00:00Z",
+      "data": {
+        "page_url": "https://example.com/services",
+        "page_title": "Our Services",
+        "time_on_page": 120
+      }
+    }
+  ]
+}
+```
+
+### POST /journey/track/pageview
+Track a page view (Public endpoint).
+
+**Request:**
+```json
+{
+  "visitor_id": "uuid-visitor-id",
+  "company_id": "1",
+  "page_url": "https://example.com/services",
+  "page_title": "Our Services",
+  "referrer": "https://google.com",
+  "utm_source": "google",
+  "utm_medium": "cpc",
+  "utm_campaign": "services"
+}
+```
+
+### POST /journey/track/form
+Track form submission (Public endpoint).
+
+**Request:**
+```json
+{
+  "visitor_id": "uuid-visitor-id",
+  "company_id": "1",
+  "form_id": "contact-form",
+  "form_name": "Contact Form",
+  "page_url": "https://example.com/contact",
+  "fields": {
+    "name": "John Doe",
+    "email": "john@example.com",
+    "phone": "+14165559876",
+    "message": "I need plumbing services"
+  }
+}
+```
+
+---
+
+## DNI (Dynamic Number Insertion)
+
+### POST /dni/visitor
+Create visitor session and get assigned number (Public endpoint).
+
+**Request:**
+```json
+{
+  "company_id": "1",
+  "page_url": "https://example.com",
+  "page_title": "Home Page",
+  "referrer": "https://google.com",
+  "user_agent": "Mozilla/5.0...",
+  "utm_source": "google",
+  "utm_medium": "cpc",
+  "utm_campaign": "plumbing",
+  "gclid": "abc123"
+}
+```
+
+**Response:**
+```json
+{
+  "visitor_id": "uuid-visitor-id",
+  "assigned_number": "+14165551234",
+  "session_duration": 1800000
+}
+```
+
+### GET /dni/visitor/:visitorId
+Get existing visitor session (Public endpoint).
+
+**Response:**
+```json
+{
+  "visitor_id": "uuid-visitor-id",
+  "assigned_number": "+14165551234",
+  "session_active": true,
+  "attribution": {
+    "source": "google",
+    "medium": "cpc",
+    "campaign": "plumbing"
+  }
+}
+```
+
+### GET /dni/pool/:companyId
+Get pool status (Requires auth).
+
+**Response:**
+```json
+{
+  "total_pool_numbers": 10,
+  "available_numbers": 7,
+  "assigned_numbers": 3,
+  "numbers": [
+    {
+      "id": 1,
+      "phone_number": "+14165551234",
+      "friendly_name": "Pool Number 1",
+      "is_available": true,
+      "last_assigned_at": "2024-01-15T10:00:00Z",
+      "assignment_count": 45
+    }
+  ]
+}
+```
+
+---
+
+## Webhooks
+
+### GET /webhooks
+Get all webhooks.
+
+**Response:**
+```json
+{
+  "webhooks": [
+    {
+      "id": 1,
+      "name": "Call Notification",
+      "url": "https://example.com/webhook",
+      "events": ["call.started", "call.completed"],
+      "status": "active",
+      "last_triggered_at": "2024-01-15T10:30:00Z",
+      "consecutive_failures": 0
+    }
+  ]
+}
+```
+
+### POST /webhooks
+Create a webhook.
+
+**Request:**
+```json
+{
+  "name": "CRM Integration",
+  "url": "https://crm.example.com/webhook",
+  "events": ["call.completed", "form.submitted"],
+  "auth_type": "bearer",
+  "auth_credentials": "secret-token",
+  "custom_headers": {
+    "X-Custom-Header": "value"
+  }
+}
+```
+
+**Response includes signing_secret for webhook signature validation.**
+
+### POST /webhooks/:id/test
+Send test webhook.
+
+### GET /webhooks/:id/deliveries
+Get webhook delivery history.
+
+**Response:**
+```json
+{
+  "deliveries": [
+    {
+      "id": 1,
+      "event_type": "call.completed",
+      "status": "success",
+      "response_status_code": 200,
+      "response_time_ms": 150,
+      "created_at": "2024-01-15T10:30:00Z"
+    }
+  ],
+  "stats": {
+    "total": 100,
+    "successful": 95,
+    "failed": 5,
+    "avg_response_time": 120
+  }
+}
+```
+
+---
+
+## Agents
+
+### GET /agents/active
+Get active agents.
+
+**Response:**
+```json
+{
+  "agents": [
+    {
+      "id": 1,
+      "email": "agent@company.com",
+      "full_name": "John Doe",
+      "status": "available",
+      "current_call_id": null,
+      "calls_handled": 15,
+      "last_activity": "2024-01-15T14:30:00Z"
+    }
+  ]
+}
+```
+
+### PUT /agents/status
+Update agent status.
+
+**Request:**
+```json
+{
+  "status": "away",
+  "break_reason": "Lunch"
+}
+```
+
+### GET /agents/:id/metrics
+Get agent metrics.
+
+**Query Parameters:**
+- `date_from`: Start date
+- `date_to`: End date
+- `company_id`: Company ID (for multi-company)
+
+**Response:**
+```json
+{
+  "total_sessions": 20,
+  "total_time_online": 28800,
+  "total_break_time": 3600,
+  "total_calls_handled": 150,
+  "avg_handle_time": 180,
+  "total_talk_time": 27000
+}
+```
+
+---
+
+## Recordings
+
+### GET /recordings/:id
+Get recording details.
+
+### GET /recordings/:id/play
+Stream recording (returns redirect to signed URL).
+
+### GET /recordings/:id/download
+Download recording (returns redirect with download headers).
+
+### GET /recordings/calls/:id/transcription
+Get call transcription.
+
+**Response:**
+```json
+{
+  "transcription": "Hello, I need help with my water heater...",
+  "confidence": 0.95,
+  "status": "completed"
+}
+```
+
+---
+
+## SIP Webhooks (Twilio Integration)
+
+### POST /sip/incoming
+Handle incoming call from Twilio (No auth required).
+
+**Request (from Twilio):**
+```json
+{
+  "CallSid": "CAxxxxx",
+  "From": "+14165559876",
+  "To": "+14165551234",
+  "CallStatus": "ringing",
+  "Direction": "inbound"
+}
+```
+
+**Response (TwiML):**
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Dial timeout="30" callerId="+14165559876" record="record-from-answer-dual">
+    <Sip>sip:14378861145@sip.ringostat.com</Sip>
+  </Dial>
+</Response>
+```
+
+### POST /sip/outbound
+Make outbound call.
+
+**Request:**
+```json
+{
+  "to": "+14165559876",
+  "from": "+14165551234",
+  "caller_id": "+14165551234"
+}
+```
+
+**Response:**
+```json
+{
+  "call_id": 1,
+  "call_sid": "CAxxxxx",
+  "status": "initiated"
+}
+```
+
+---
+
+## Error Responses
+
+All endpoints may return these error responses:
+
+### 400 Bad Request
+```json
+{
+  "error": "Validation failed",
+  "details": "Invalid phone number format"
+}
+```
+
+### 401 Unauthorized
+```json
+{
+  "error": "No token provided"
+}
+```
+
+### 403 Forbidden
+```json
+{
+  "error": "Insufficient permissions"
+}
+```
+
+### 404 Not Found
+```json
+{
+  "error": "Resource not found"
+}
+```
+
+### 429 Too Many Requests
+```json
+{
+  "error": "Too many requests",
+  "retryAfter": 60
+}
+```
+
+### 500 Internal Server Error
+```json
+{
+  "error": "Internal server error"
+}
+```
+
+---
+
+## WebSocket Events
+
+Connect to WebSocket for real-time updates:
+```javascript
+const socket = io('ws://localhost:3001', {
+  auth: {
+    token: 'your-jwt-token'
+  }
+});
+```
+
+### Events You Can Listen To:
+
+**Call Events:**
+- `call:incoming` - New incoming call
+- `call:answered` - Call was answered
+- `call:completed` - Call ended
+- `call:status:updated` - Call status changed
+- `call:recording:ready` - Recording available
+
+**Agent Events:**
+- `agent:status:changed` - Agent status changed
+- `agent:stats` - Agent statistics update
+
+**Text Events:**
+- `text:received` - New text message received
+- `text:sent` - Text message sent
+
+### Events You Can Emit:
+
+**Call Subscriptions:**
+- `call:subscribe` - Subscribe to call updates
+- `call:unsubscribe` - Unsubscribe from call
+- `call:status:get` - Get current call status
+
+**Agent Management:**
+- `agent:status` - Update agent status
+- `agent:ping` - Keep session alive
+- `agent:availability` - Set availability
+
+---
+
+## Rate Limits
+
+- General API: 100 requests per 15 minutes per IP
+- Tracking endpoints: 100 requests per minute per API key
+- Webhook deliveries: 60 per minute per webhook
+
+---
+
+## Pagination
+
+Most list endpoints support pagination with these parameters:
+- `page`: Page number (starts at 1)
+- `limit`: Items per page (max 100)
+- `sort_by`: Field to sort by
+- `sort_order`: ASC or DESC
+
+Response includes pagination metadata:
+```json
+{
+  "data": [...],
+  "pagination": {
+    "total": 250,
+    "page": 1,
+    "limit": 50,
+    "pages": 5
+  }
+}
+```
+
+---
+
+## Date Formats
+
+All dates are in ISO 8601 format:
+- `2024-01-15T10:30:00Z` (UTC)
+- `2024-01-15` (Date only)
+
+Timezone is configurable per company (default: America/New_York).
+
+---
+
+## Phone Number Format
+
+Phone numbers should be in E.164 format:
+- `+14165551234` (Correct)
+- `(416) 555-1234` (Will be converted)
+- `4165551234` (Will add +1 for North American numbers)

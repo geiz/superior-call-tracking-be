@@ -453,7 +453,7 @@ export class UsersController {
       await MailjetService.sendEmail({
         to: user.email,
         toName: user.full_name,
-        subject: 'Welcome to CallRail Clone',
+        subject: 'Welcome to Superior Call Tracking',
         textContent: `
           Welcome ${user.first_name}!
           

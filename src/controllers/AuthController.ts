@@ -261,6 +261,74 @@ class AuthController {
       // No company or user created at this point
       // Admin will create companies after login
 
+      // Add email sending:
+try {
+  await MailjetService.sendEmail({
+    to: email,
+    toName: `${first_name} ${last_name}`,
+    subject: 'Welcome to Superior Call Tracking - Account Created',
+    textContent: `
+Hi ${first_name}!
+
+Welcome to Superior Call Tracking! Your account has been successfully created.
+
+Your Login Credentials:
+------------------------
+Email: ${email}
+Password: ${password}
+
+You can log in at: ${process.env.FRONTEND_URL || 'https://superior-call-track.web.app/'}/login
+
+Next steps:
+1. Log in to your account
+2. Create your first company
+3. Set up tracking numbers
+4. Start tracking calls!
+
+Best regards,
+The Superior Call Tracking Team
+    `.trim(),
+    htmlContent: `
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+    .header { background: #4F46E5; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }
+    .content { background: #f9f9f9; padding: 30px; border: 1px solid #ddd; }
+    .credentials { background: #fff; padding: 20px; border-radius: 5px; margin: 20px 0; }
+    .button { background: #4F46E5; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block; margin-top: 20px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Welcome to Superior Call Tracking!</h1>
+    </div>
+    <div class="content">
+      <h2>Hi ${first_name}! 👋</h2>
+      <p>Your account has been successfully created. You're now ready to start tracking calls and optimizing your marketing!</p>
+      <div class="credentials">
+        <h3>Your Login Credentials:</h3>
+        <p><strong>Email:</strong> ${email}<br>
+        <strong>Password:</strong> ${password}</p>
+      </div>
+      <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/login" class="button">Login to Your Account</a>
+    </div>
+  </div>
+</body>
+</html>
+    `.trim()
+  });
+  console.log('Welcome email sent to:', email);
+} catch (emailError) {
+  console.error('Failed to send welcome email:', emailError);
+  // Don't fail registration if email fails
+}
+
+      // Mail JET!
+
       const token = signToken({
         id: account.id,
         email: account.email,
@@ -342,13 +410,13 @@ class AuthController {
 
     try {
       const subject = isNewAccount
-        ? `Welcome to CallRail Clone - Account Created`
-        : `Your CallRail Clone Account Details`;
+        ? `Welcome to Superior Call Tracking - Account Created`
+        : `Your Superior Call Tracking Account Details`;
 
       const textContent = `
 Hi ${user.first_name}!
 
-Welcome to CallRail Clone! Your account has been successfully created.
+Welcome to Superior Call Tracking! Your account has been successfully created.
 
 Company: ${company.name}
 
@@ -360,7 +428,7 @@ Password: ${password}
 You can log in at: ${process.env.FRONTEND_URL || 'http://localhost:3000'}/login
 
 Best regards,
-The CallRail Clone Team
+The Superior Call Tracking Team
       `.trim();
 
       const htmlContent = `
@@ -377,7 +445,7 @@ The CallRail Clone Team
 <body>
   <div class="container">
     <div class="header">
-      <h1>Welcome to CallRail Clone!</h1>
+      <h1>Welcome to Superior Call Tracking!</h1>
     </div>
     <div class="content">
       <h2>Hi ${user.first_name}! 👋</h2>
@@ -397,7 +465,7 @@ The CallRail Clone Team
         textContent,
         htmlContent,
         from: process.env.MAILJET_FROM_EMAIL || 'noreply@callrail-clone.com',
-        fromName: process.env.MAILJET_FROM_NAME || 'CallRail Clone'
+        fromName: process.env.MAILJET_FROM_NAME || 'Superior Call Tracking'
       });
 
       console.log(`✅ Welcome email sent to ${user.email}`);

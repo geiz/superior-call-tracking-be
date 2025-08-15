@@ -52,7 +52,7 @@ class MailjetService {
             {
               From: {
                 Email: data.from || process.env.MAILJET_FROM_EMAIL || 'noreply@superiorplumbing.ca',
-                Name: data.fromName || process.env.MAILJET_FROM_NAME || 'CallRail Clone'
+                Name: data.fromName || process.env.MAILJET_FROM_NAME || 'Superior Call Tracking'
               },
               To: [
                 {
@@ -94,7 +94,7 @@ class MailjetService {
       const messages = emails.map(data => ({
         From: {
           Email: data.from || process.env.MAILJET_FROM_EMAIL || 'noreply@callrail-clone.com',
-          Name: data.fromName || process.env.MAILJET_FROM_NAME || 'CallRail Clone'
+          Name: data.fromName || process.env.MAILJET_FROM_NAME || 'Superior Call Tracking'
         },
         To: [
           {
