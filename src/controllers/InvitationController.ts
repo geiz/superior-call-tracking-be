@@ -7,7 +7,7 @@ import { AuthRequest } from '../middleware/auth';
 import { v4 as uuidv4 } from 'uuid';
 import { Op } from 'sequelize';
 import bcrypt from 'bcryptjs';
-import MailjetService from '../services/MailjetService';
+import BrevoService from '../services/BrevoService';
 
 interface InviteUserRequest extends AuthRequest {
   body: {
@@ -101,23 +101,7 @@ export class InvitationController {
     // Send invitation email...
     try {
   const company = await Company.findByPk(companyIds[0]);
-  
-  await MailjetService.sendEmail({
-    to: email,
-    toName: `${first_name} ${last_name}`,
-    subject: `You've been invited to join ${company?.name || 'Superior Call Tracking'}`,
-    textContent: `
-Hi ${first_name}
-    `.trim(),
-    htmlContent: `
-<h2>Welcome to ${company?.name || 'Superior Call Tracking'}!</h2>
-<p>Hi </p>
 
-    `.trim(),
-    from: 'david.shi@superiorplumbing.ca',
-    fromName: 'Superior Call Tracking',
-    replyTo: 'david.shi@superiorplumbing.ca',
-  });
   
   console.log('✅ Invitation email sent to:', email);
 } catch (emailError) {
@@ -439,53 +423,54 @@ Hi ${first_name}
   }
 
   private async sendInvitationEmail(invitation: UserInvitation, password: string, inviter: any): Promise<void> {
-    try {
-      const company = await Company.findByPk(invitation.company_id);
-      
-      await MailjetService.sendEmail({
-        to: invitation.email,
-        toName: `${invitation.first_name} ${invitation.last_name}`,
-        subject: `You've been invited to join ${company?.name || 'CallRail Clone'}`,
-        textContent: `
-          Hi ${invitation.first_name},
+  try {
+    const company = await Company.findByPk(invitation.company_id);
+    
+    await BrevoService.sendEmail({
+      to: invitation.email,
+      toName: `${invitation.first_name} ${invitation.last_name}`,
+      subject: `You've been invited to join ${company?.name || 'CallRail Clone'}`,
+      textContent: `
+        Hi ${invitation.first_name},
 
-          ${inviter.first_name} ${inviter.last_name} has invited you to join ${company?.name || 'CallRail Clone'} as a ${invitation.role}.
+        ${inviter.first_name} ${inviter.last_name} has invited you to join ${company?.name || 'CallRail Clone'} as a ${invitation.role}.
 
-          Your login credentials:
-          Email: ${invitation.email}
-          Password: ${password}
+        Your login credentials:
+        Email: ${invitation.email}
+        Password: ${password}
 
-          Please log in at: ${process.env.FRONTEND_URL}/login
+        Please log in at: ${process.env.FRONTEND_URL}/login
 
-          This invitation will expire in 7 days.
+        This invitation will expire in 7 days.
 
-          Best regards,
-          The ${company?.name || 'CallRail Clone'} Team
-        `,
-        htmlContent: `
-          <h2>Welcome to ${company?.name || 'CallRail Clone'}!</h2>
-          <p>Hi ${invitation.first_name},</p>
-          <p>${inviter.first_name} ${inviter.last_name} has invited you to join <strong>${company?.name || 'CallRail Clone'}</strong> as a <strong>${invitation.role}</strong>.</p>
-          
-          <div style="background: #f5f5f5; padding: 20px; border-radius: 5px; margin: 20px 0;">
-            <h3>Your Login Credentials:</h3>
-            <p><strong>Email:</strong> ${invitation.email}<br>
-            <strong>Password:</strong> ${password}</p>
-          </div>
-          
-          <p><a href="${process.env.FRONTEND_URL}/login" style="background: #4CAF50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">Login Now</a></p>
-          
-          <p><em>This invitation will expire in 7 days.</em></p>
-          
-          <p>Best regards,<br>
-          The ${company?.name || 'CallRail Clone'} Team</p>
-        `
-      });
-    } catch (error) {
-      console.error('Failed to send invitation email:', error);
-      throw error;
-    }
+        Best regards,
+        The ${company?.name || 'CallRail Clone'} Team
+      `,
+      htmlContent: `
+        <h2>Welcome to ${company?.name || 'CallRail Clone'}!</h2>
+        <p>Hi ${invitation.first_name},</p>
+        <p>${inviter.first_name} ${inviter.last_name} has invited you to join <strong>${company?.name || 'CallRail Clone'}</strong> as a <strong>${invitation.role}</strong>.</p>
+        
+        <div style="background: #f5f5f5; padding: 20px; border-radius: 5px; margin: 20px 0;">
+          <h3>Your Login Credentials:</h3>
+          <p><strong>Email:</strong> ${invitation.email}<br>
+          <strong>Password:</strong> ${password}</p>
+        </div>
+        
+        <p><a href="${process.env.FRONTEND_URL}/login" style="background: #4CAF50; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px; display: inline-block;">Login Now</a></p>
+        
+        <p><em>This invitation will expire in 7 days.</em></p>
+        
+        <p>Best regards,<br>
+        The ${company?.name || 'CallRail Clone'} Team</p>
+      `
+    });
+  } catch (error) {
+    console.error('Failed to send invitation email:', error);
+    throw error;
   }
+}
+
 }
 
 const controller = new InvitationController();

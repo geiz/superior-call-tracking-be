@@ -6,7 +6,7 @@ import { InvitationStatus } from '../models/UserInvitation';
 import { AuthRequest } from '../middleware/auth';
 import { v4 as uuidv4 } from 'uuid';
 import { Op } from 'sequelize';
-import MailjetService from '../services/MailjetService';
+import BrevoService from '../services/BrevoService';
 
 interface CreateUserRequest extends AuthRequest {
   body: {
@@ -448,66 +448,66 @@ export class UsersController {
     return password;
   }
 
-  private async sendWelcomeEmail(user: User, tempPassword: string): Promise<void> {
-    try {
-      await MailjetService.sendEmail({
-        to: user.email,
-        toName: user.full_name,
-        subject: 'Welcome to Superior Call Tracking',
-        textContent: `
-          Welcome ${user.first_name}!
-          
-          Your account has been created. Here are your login credentials:
-          
-          Email: ${user.email}
-          Temporary Password: ${tempPassword}
-          
-          Please log in and change your password as soon as possible.
-          
-          Login at: ${process.env.FRONTEND_URL}/login
-        `,
-        htmlContent: `
-          <h2>Welcome ${user.first_name}!</h2>
-          <p>Your account has been created. Here are your login credentials:</p>
-          <p><strong>Email:</strong> ${user.email}<br>
-          <strong>Temporary Password:</strong> ${tempPassword}</p>
-          <p>Please log in and change your password as soon as possible.</p>
-          <p><a href="${process.env.FRONTEND_URL}/login">Login here</a></p>
-        `
-      });
-    } catch (error) {
-      console.error('Failed to send welcome email:', error);
-    }
+private async sendWelcomeEmail(user: User, tempPassword: string): Promise<void> {
+  try {
+    await BrevoService.sendEmail({
+      to: user.email,
+      toName: user.full_name,
+      subject: 'Welcome to Superior Call Tracking',
+      textContent: `
+        Welcome ${user.first_name}!
+        
+        Your account has been created. Here are your login credentials:
+        
+        Email: ${user.email}
+        Temporary Password: ${tempPassword}
+        
+        Please log in and change your password as soon as possible.
+        
+        Login at: ${process.env.FRONTEND_URL}/login
+      `,
+      htmlContent: `
+        <h2>Welcome ${user.first_name}!</h2>
+        <p>Your account has been created. Here are your login credentials:</p>
+        <p><strong>Email:</strong> ${user.email}<br>
+        <strong>Temporary Password:</strong> ${tempPassword}</p>
+        <p>Please log in and change your password as soon as possible.</p>
+        <p><a href="${process.env.FRONTEND_URL}/login">Login here</a></p>
+      `
+    });
+  } catch (error) {
+    console.error('Failed to send welcome email:', error);
   }
+}
 
-  private async sendPasswordResetEmail(user: User, tempPassword: string): Promise<void> {
-    try {
-      await MailjetService.sendEmail({
-        to: user.email,
-        toName: user.full_name,
-        subject: 'Password Reset',
-        textContent: `
-          Hi ${user.first_name},
-          
-          Your password has been reset. Here is your new temporary password:
-          
-          Temporary Password: ${tempPassword}
-          
-          Please log in and change your password as soon as possible.
-          
-          Login at: ${process.env.FRONTEND_URL}/login
-        `,
-        htmlContent: `
-          <h2>Hi ${user.first_name},</h2>
-          <p>Your password has been reset. Here is your new temporary password:</p>
-          <p><strong>Temporary Password:</strong> ${tempPassword}</p>
-          <p>Please log in and change your password as soon as possible.</p>
-          <p><a href="${process.env.FRONTEND_URL}/login">Login here</a></p>
-        `
-      });
-    } catch (error) {
-      console.error('Failed to send password reset email:', error);
-    }
+
+private async sendPasswordResetEmail(user: User, tempPassword: string): Promise<void> {
+  try {
+    await BrevoService.sendEmail({
+      to: user.email,
+      toName: user.full_name,
+      subject: 'Password Reset',
+      textContent: `
+        Hi ${user.first_name},
+        
+        Your password has been reset. Here is your new temporary password:
+        
+        Temporary Password: ${tempPassword}
+        
+        Please log in and change your password as soon as possible.
+        
+        Login at: ${process.env.FRONTEND_URL}/login
+      `,
+      htmlContent: `
+        <h2>Hi ${user.first_name},</h2>
+        <p>Your password has been reset. Here is your new temporary password:</p>
+        <p><strong>Temporary Password:</strong> ${tempPassword}</p>
+        <p>Please log in and change your password as soon as possible.</p>
+        <p><a href="${process.env.FRONTEND_URL}/login">Login here</a></p>
+      `
+    });
+  } catch (error) {
+    console.error('Failed to send password reset email:', error);
   }
 }
 

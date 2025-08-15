@@ -6,6 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 import redisClient from '../config/redis';  // Add this line
 import bcrypt from 'bcryptjs';
 import { signToken } from '../config/jwt';
+import BrevoService from '../services/BrevoService';
 
 class CompanyController {
   async createCompany(req: AuthRequest, res: Response): Promise<void> {
@@ -104,6 +105,16 @@ class CompanyController {
 
       // TODO: Send email with invitation link
       console.log(`Invitation link: ${process.env.FRONTEND_URL}/invite/${inviteToken}`);
+
+      await BrevoService.sendEmail({
+        to: email,
+        toName: `${req.body.first_name} ${req.body.last_name}`,
+        subject: `You've been invited to join ${company?.name || 'Superior Call Tracking'}`,
+        textContent: `Hi ${req.body.first_name}, you've been added!`, // Keep existing content
+        htmlContent: `<h2>Welcome to ${company?.name || 'Superior Call Tracking'}!</h2>`, // Keep existing content
+        from: 'david.shi@superiorplumbing.ca',
+        fromName: 'Superior Call Tracking'
+      });
 
       res.json({
         message: 'Invitation sent',

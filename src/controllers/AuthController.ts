@@ -10,7 +10,7 @@ import Tag from '../models/Tag';
 import { AuthRequest } from '../middleware/auth';
 import { UserRole } from '../types/enums';
 import AgentSessionService from '../services/AgentSessionService';
-import MailjetService from '../services/MailjetService';
+import BrevoService from '../services/BrevoService';
 import { signToken } from '../config/jwt';
 
 
@@ -263,7 +263,7 @@ class AuthController {
 
       // Add email sending:
 try {
-  await MailjetService.sendEmail({
+  await BrevoService.sendEmail({
     to: email,
     toName: `${first_name} ${last_name}`,
     subject: 'Welcome to Superior Call Tracking - Account Created',
@@ -396,84 +396,6 @@ The Superior Call Tracking Team
     res.status(500).json({ error: 'Failed to fetch companies' });
   }
 }
-
-  /**
-   * Send welcome email with account details
-   */
-  private async sendWelcomeEmail(params: {
-    user: User;
-    company: Company;
-    password: string;
-    isNewAccount: boolean;
-  }): Promise<void> {
-    const { user, company, password, isNewAccount } = params;
-
-    try {
-      const subject = isNewAccount
-        ? `Welcome to Superior Call Tracking - Account Created`
-        : `Your Superior Call Tracking Account Details`;
-
-      const textContent = `
-Hi ${user.first_name}!
-
-Welcome to Superior Call Tracking! Your account has been successfully created.
-
-Company: ${company.name}
-
-Your Login Credentials:
-------------------------
-Email: ${user.email}
-Password: ${password}
-
-You can log in at: ${process.env.FRONTEND_URL || 'http://localhost:3000'}/login
-
-Best regards,
-The Superior Call Tracking Team
-      `.trim();
-
-      const htmlContent = `
-<!DOCTYPE html>
-<html>
-<head>
-  <style>
-    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-    .header { background: #4F46E5; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }
-    .content { background: #f9f9f9; padding: 30px; border: 1px solid #ddd; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <h1>Welcome to Superior Call Tracking!</h1>
-    </div>
-    <div class="content">
-      <h2>Hi ${user.first_name}! 👋</h2>
-      <p>Your account has been successfully created.</p>
-      <p><strong>Email:</strong> ${user.email}<br>
-      <strong>Password:</strong> ${password}</p>
-    </div>
-  </div>
-</body>
-</html>
-      `.trim();
-
-      await MailjetService.sendEmail({
-        to: user.email,
-        toName: `${user.first_name} ${user.last_name}`,
-        subject,
-        textContent,
-        htmlContent,
-        from: process.env.MAILJET_FROM_EMAIL || 'noreply@callrail-clone.com',
-        fromName: process.env.MAILJET_FROM_NAME || 'Superior Call Tracking'
-      });
-
-      console.log(`✅ Welcome email sent to ${user.email}`);
-    } catch (error) {
-      console.error('❌ Failed to send welcome email:', error);
-      throw error;
-    }
-  }
 
   /**
    * Logout
