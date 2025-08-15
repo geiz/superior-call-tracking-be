@@ -592,6 +592,85 @@ The Superior Call Tracking Team
       throw error;
     }
   }
+
+  /**
+ * Add a contact to the registration list (List ID 7)
+ * This is specifically for email registration/newsletter signups
+ * @param email - The email address to add to the list
+ * @returns Promise with the result of the operation
+ */
+  async addContactToEmailList(email: string, firstName: string, lastName: string, phone: string): Promise<any> {
+    if (!this.enabled) {
+      console.log('📧 Contact would be added to registration list:', email);
+      return { mock: true, email, listId: 7 };
+    }
+
+    try {
+      // Validate email format
+      const isValid = await this.validateEmail(email);
+      if (!isValid) {
+        throw new Error('Invalid email format');
+      }
+
+      // Add contact to List ID 7 (Registration/Newsletter list)
+      const response = await axios.post(
+        `${this.apiUrl}/contacts`,
+        {
+          email,
+          attributes: {
+            FIRSTNAME: firstName,  // Uses Brevo's built-in FIRSTNAME attribute
+            LASTNAME: lastName,
+            SMS: phone        // Uses Brevo's built-in SMS (mobile phone) attribute
+          },
+          listIds: [7], // List ID 7 for registration
+          updateEnabled: true // Update if contact already exists
+        },
+        {
+          headers: {
+            'api-key': this.apiKey,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      console.log('✅ Contact added to registration list (ID 7):', email);
+      return {
+        success: true,
+        email,
+        listId: 7,
+        ...response.data
+      };
+    } catch (error: any) {
+      console.error('❌ Failed to add contact to registration list:', error.response?.data || error.message);
+
+      // Handle specific Brevo error codes
+      if (error.response) {
+        const { status, data } = error.response;
+
+        switch (status) {
+          case 400:
+            if (data.message?.includes('Contact already exist')) {
+              // Contact already exists, this is okay for updateEnabled:true
+              console.log('ℹ️ Contact already exists in system, updating lists');
+              return { success: true, email, listId: 7, existing: true };
+            }
+            throw new Error('Invalid request: ' + (data.message || 'Bad request'));
+          case 401:
+            throw new Error('Authentication failed - check Brevo API key');
+          case 402:
+            throw new Error('Brevo account limit reached');
+          case 404:
+            throw new Error('List ID 7 not found in your Brevo account');
+          case 409:
+            throw new Error('Contact already exists in the list');
+          default:
+            throw new Error(data.message || 'Failed to add contact to list');
+        }
+      }
+
+      throw error;
+    }
+  }
 }
 
 // Export singleton instance

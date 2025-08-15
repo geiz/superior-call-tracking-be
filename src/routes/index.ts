@@ -13,6 +13,7 @@ import agentRoutes from './agents';
 import recordingRoutes from './recordings';
 import sipRoutes from './sip';
 import dniRoutes from './dni';
+import newsletter from './newsletter';
 
 const router = Router();
 
@@ -32,5 +33,6 @@ router.use('/journey', journeyRoutes);
 router.use('/webhooks', webhookRoutes);
 router.use('/agents', agentRoutes);
 router.use('/recordings', recordingRoutes);
+router.use('/newsletter', newsletter);
 
 export default router;
