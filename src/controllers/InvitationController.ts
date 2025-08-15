@@ -428,9 +428,7 @@ export class InvitationController {
     
     await BrevoService.sendInvitationEmail({
       to: invitation.email,
-      firstName: invitation.first_name,
-      lastName: invitation.last_name,
-      inviterName: `${inviter.first_name} ${inviter.last_name}`,
+      toName: `${invitation.first_name} ${invitation.last_name}`,
       companyName: company?.name || 'Superior Call Tracking',
       role: invitation.role,
       email: invitation.email,

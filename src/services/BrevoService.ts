@@ -257,7 +257,7 @@ The ${data.companyName} Team
 
     return this.sendEmail({
       to: data.to,
-      toName: `${data.firstName} ${data.lastName}`,
+      toName: `${data.toName}`,
       subject,
       textContent,
       htmlContent,
