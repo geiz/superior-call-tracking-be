@@ -97,8 +97,8 @@ class BrevoService {
     this.enabled = !!this.apiKey;
 
     this.defaultSender = {
-      email: process.env.BREVO_FROM_EMAIL || 'noreply@superiorplumbing.ca',
-      name: process.env.BREVO_FROM_NAME || 'Superior Call Tracking',
+      email: process.env.BREVO_FROM_EMAIL || 'support@superiorcall.io',
+      name: process.env.BREVO_FROM_NAME || 'Superior Call Team',
     };
 
     this.frontendUrl = process.env.FRONTEND_URL || 'https://superior-call-track.web.app';

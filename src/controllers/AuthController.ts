@@ -237,6 +237,12 @@ class AuthController {
     try {
       const { email, password, first_name, last_name, phone } = req.body;
 
+      // Add validation to ensure email exists
+      if (!email) {
+        res.status(400).json({ error: 'Email is required' });
+        return;
+      }
+
       // Check if account exists
       const existingAccount = await Account.findOne({ where: { email } });
       if (existingAccount) {
