@@ -118,16 +118,15 @@ export class UsersController {
   /**
    * Get a single user by ID
    */
+  /**
+   * Get a single user by ID
+   */
   async getUser(req: AuthRequest, res: Response): Promise<void> {
     try {
       const { id } = req.params;
 
-      const user = await User.findOne({
-        include: [{
-          model: UserCompany,
-          where: { id: parseInt(id), company_id: req.user!.company_id },
-          required: true
-        }],
+      // Find the user by ID
+      const user = await User.findByPk(parseInt(id), {
         attributes: { exclude: ['password_hash'] }
       });
 
@@ -136,9 +135,10 @@ export class UsersController {
         return;
       }
 
+      // Verify they have access to the requesting company
       const hasAccess = await user.hasAccessToCompany(req.user!.company_id);
       if (!hasAccess) {
-        res.status(403).json({ error: 'Access to Compnay is denied' });
+        res.status(403).json({ error: 'Access to Company is denied' });
         return;
       }
 
@@ -148,6 +148,7 @@ export class UsersController {
       res.status(500).json({ error: 'Failed to fetch user' });
     }
   }
+
 
   /**
    * Create a new user
@@ -171,32 +172,141 @@ export class UsersController {
         return;
       }
 
-      // Check if email already exists
+      // Check if user with this email already exists
       const existingUser = await User.findOne({
         where: { email }
       });
 
       if (existingUser) {
-        res.status(400).json({ error: 'Email already exists' });
-        return;
+        // Check if the existing user has access to this company
+        const existingUserCompany = await UserCompany.findOne({
+          where: {
+            user_id: existingUser.id,
+            company_id: req.user!.company_id
+          }
+        });
+
+        if (existingUserCompany) {
+          // User already exists in this company
+          if (existingUserCompany.is_active) {
+            res.status(400).json({ error: 'Email already exists and is active in this company' });
+            return;
+          } else {
+            // Reactivate the existing user for this company
+            await existingUser.update({
+              first_name,
+              last_name,
+              phone,
+              personal_note,
+              is_active: true
+            });
+
+            // Update password if provided
+            const tempPassword = password || this.generateTempPassword();
+            await existingUser.setPassword(tempPassword);
+            await existingUser.save();
+
+            // Reactivate and update the UserCompany relationship
+            await existingUserCompany.update({
+              role,
+              is_active: true
+            });
+
+            // Send welcome email if requested
+            if (send_welcome_email) {
+              await BrevoService.sendWelcomeEmail({
+                to: existingUser.email,
+                firstName: existingUser.first_name || '',
+                lastName: existingUser.last_name || '',
+                email: existingUser.email,
+                password: tempPassword
+              });
+            }
+
+            res.status(200).json({
+              user: existingUser,
+              temp_password: !password ? tempPassword : undefined,
+              message: 'User reactivated for this company'
+            });
+            return;
+          }
+        } else {
+          // User exists but not in this company - add them to this company
+          await UserCompany.create({
+            user_id: existingUser.id,
+            company_id: req.user!.company_id,
+            role,
+            is_active: true,
+            invited_by: req.user!.id,
+            joined_at: new Date()
+          } as any);
+
+          // Update user details if they're inactive
+          if (!existingUser.is_active) {
+            await existingUser.update({
+              first_name,
+              last_name,
+              phone,
+              personal_note,
+              is_active: true
+            });
+
+            // Update password
+            const tempPassword = password || this.generateTempPassword();
+            await existingUser.setPassword(tempPassword);
+            await existingUser.save();
+
+            if (send_welcome_email) {
+              await BrevoService.sendWelcomeEmail({
+                to: existingUser.email,
+                firstName: existingUser.first_name || '',
+                lastName: existingUser.last_name || '',
+                email: existingUser.email,
+                password: tempPassword
+              });
+            }
+
+            res.status(200).json({
+              user: existingUser,
+              temp_password: !password ? tempPassword : undefined,
+              message: 'User added to this company'
+            });
+          } else {
+            // User is active in another company, just add them to this one
+            res.status(200).json({
+              user: existingUser,
+              message: 'User added to this company (already active in another company)'
+            });
+          }
+          return;
+        }
       }
 
       // Generate a temporary password if not provided
       const tempPassword = password || this.generateTempPassword();
 
-      // Create the user
+      // Create new user (first time in system)
       const user = await User.create({
         uuid: uuidv4(),
-        company_id: req.user!.company_id,
+        account_id: req.user!.account_id,
         email,
         password_hash: tempPassword, // Will be hashed in BeforeCreate hook
         first_name,
         last_name,
-        role,
         phone,
         personal_note,
-        created_by: req.user!.id,
         is_active: true
+      } as any);
+
+      // Add user to company
+      await UserCompany.create({
+        user_id: user.id,
+        company_id: req.user!.company_id,
+        role,
+        is_active: true,
+        invited_by: req.user!.id,
+        joined_at: new Date(),
+        is_default: true // First company is default
       } as any);
 
       // Send welcome email with credentials if requested
@@ -212,7 +322,7 @@ export class UsersController {
 
       // Return user without password
       const userResponse = user.toJSON();
-      //   delete userResponse.password_hash;
+      delete (userResponse as any).password_hash;
 
       res.status(201).json({
         user: userResponse,
@@ -225,8 +335,8 @@ export class UsersController {
   }
 
   /**
-   * Update a user
-   */
+ * Update a user
+ */
   async updateUser(req: UpdateUserRequest, res: Response): Promise<void> {
     try {
       const { id } = req.params;
@@ -238,16 +348,18 @@ export class UsersController {
         return;
       }
 
-      const user = await User.findOne({
-        include: [{
-          model: UserCompany,
-          where: { id: parseInt(id), company_id: req.user!.company_id },
-          required: true
-        }],
-      });
+      // Find the user by ID
+      const user = await User.findByPk(parseInt(id));
 
       if (!user) {
         res.status(404).json({ error: 'User not found' });
+        return;
+      }
+
+      // Verify they have access to the requesting company
+      const hasAccess = await user.hasAccessToCompany(req.user!.company_id);
+      if (!hasAccess) {
+        res.status(403).json({ error: 'User not found in this company' });
         return;
       }
 
@@ -270,8 +382,21 @@ export class UsersController {
 
       await user.update(updates);
 
+      // If role is being updated, also update UserCompany
+      if (updates.role) {
+        await UserCompany.update(
+          { role: updates.role },
+          {
+            where: {
+              user_id: user.id,
+              company_id: req.user!.company_id
+            }
+          }
+        );
+      }
+
       const userResponse = user.toJSON();
-      //   delete userResponse.password_hash;
+      delete (userResponse as any).password_hash;
 
       res.json(userResponse);
     } catch (error) {
@@ -292,16 +417,17 @@ export class UsersController {
         return;
       }
 
-      const user = await User.findOne({
-        include: [{
-          model: UserCompany,
-          where: { id: parseInt(id), company_id: req.user!.company_id },
-          required: true
-        }],
-      });
+      const user = await User.findByPk(parseInt(id));
 
       if (!user) {
         res.status(404).json({ error: 'User not found' });
+        return;
+      }
+
+      // Verify they have access to the requesting company
+      const hasAccess = await user.hasAccessToCompany(req.user!.company_id);
+      if (!hasAccess) {
+        res.status(403).json({ error: 'User not found in this company' });
         return;
       }
 
@@ -311,8 +437,19 @@ export class UsersController {
         return;
       }
 
-      // Soft delete by deactivating
+      // Soft delete by deactivating the user
       await user.update({ is_active: false });
+
+      // Also deactivate their UserCompany relationship
+      await UserCompany.update(
+        { is_active: false },
+        {
+          where: {
+            user_id: user.id,
+            company_id: req.user!.company_id
+          }
+        }
+      );
 
       res.json({ message: 'User deactivated successfully' });
     } catch (error) {
@@ -333,20 +470,32 @@ export class UsersController {
         return;
       }
 
-      const user = await User.findOne({
-        include: [{
-          model: UserCompany,
-          where: { id: parseInt(id), company_id: req.user!.company_id },
-          required: true
-        }],
-      });
+      // Find the user by ID
+      const user = await User.findByPk(parseInt(id));
 
       if (!user) {
         res.status(404).json({ error: 'User not found' });
         return;
       }
 
+      // Verify they have/had access to the requesting company
+      const userCompany = await UserCompany.findOne({
+        where: {
+          user_id: user.id,
+          company_id: req.user!.company_id
+        }
+      });
+
+      if (!userCompany) {
+        res.status(403).json({ error: 'User not found in this company' });
+        return;
+      }
+
+      // Reactivate the user
       await user.update({ is_active: true });
+
+      // Also reactivate their UserCompany relationship
+      await userCompany.update({ is_active: true });
 
       res.json({ message: 'User reactivated successfully' });
     } catch (error) {
@@ -368,16 +517,18 @@ export class UsersController {
         return;
       }
 
-      const user = await User.findOne({
-        include: [{
-          model: UserCompany,
-          where: { id: parseInt(id), company_id: req.user!.company_id },
-          required: true
-        }],
-      });
+      // Find the user by ID
+      const user = await User.findByPk(parseInt(id));
 
       if (!user) {
         res.status(404).json({ error: 'User not found' });
+        return;
+      }
+
+      // Verify they have access to the requesting company
+      const hasAccess = await user.hasAccessToCompany(req.user!.company_id);
+      if (!hasAccess) {
+        res.status(403).json({ error: 'User not found in this company' });
         return;
       }
 
@@ -386,7 +537,7 @@ export class UsersController {
       await user.save();
 
       if (send_email) {
-       await BrevoService.sendPasswordResetEmail({
+        await BrevoService.sendPasswordResetEmail({
           to: user.email,
           firstName: user.first_name || user.email,
           tempPassword

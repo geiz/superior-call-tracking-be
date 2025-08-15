@@ -142,46 +142,91 @@ The Superior Call Tracking Team
     const htmlContent = `
 <!DOCTYPE html>
 <html>
-<head>
-  <style>
-    body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-    .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-    .header { background: #4F46E5; color: white; padding: 20px; text-align: center; border-radius: 5px 5px 0 0; }
-    .content { background: #f9f9f9; padding: 30px; border: 1px solid #ddd; }
-    .credentials { background: #fff; padding: 20px; border-radius: 5px; margin: 20px 0; }
-    .button { background: #4F46E5; color: white; padding: 12px 30px; text-decoration: none; border-radius: 5px; display: inline-block; margin-top: 20px; }
-    .steps { margin: 20px 0; padding-left: 20px; }
-    .steps li { margin: 10px 0; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="header">
-      <h1>Welcome to Superior Call Tracking!</h1>
+  <head>
+    <meta charset="utf-8">
+    <!-- helps some clients avoid auto zoom/reflow -->
+    <meta name="x-apple-disable-message-reformatting">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Welcome</title>
+  </head>
+  <body style="Margin:0; padding:0; background-color:#f3f4f6;">
+    <!-- Preheader (hidden preview text) -->
+    <div style="display:none; font-size:1px; line-height:1px; max-height:0; max-width:0; opacity:0; overflow:hidden;">
+      Your account has been created. Here are your login details.
     </div>
-    <div class="content">
-      <h2>Hi ${data.firstName}! 👋</h2>
-      <p>Your account has been successfully created. You're now ready to start tracking calls and optimizing your marketing!</p>
 
-      <div class="credentials">
-        <h3>Your Login Credentials:</h3>
-        <p><strong>Email:</strong> ${data.email}<br>
-        <strong>Password:</strong> ${data.password}</p>
-      </div>
+    <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color:#f3f4f6;">
+      <tr>
+        <td align="center" style="padding:24px;">
+          <table role="presentation" width="600" border="0" cellspacing="0" cellpadding="0" style="width:600px; max-width:100%; background-color:#ffffff; border:1px solid #e5e7eb; border-radius:6px; overflow:hidden;">
+            <!-- Header -->
+            <tr>
+              <td align="center" style="background-color:#4F46E5; padding:20px;">
+                <h1 style="Margin:0; font-family:Arial, Helvetica, sans-serif; font-size:22px; line-height:28px; color:#ffffff;">
+                  Welcome to Superior Call Tracking!
+                </h1>
+              </td>
+            </tr>
 
-      <h3>Next Steps:</h3>
-      <ol class="steps">
-        <li>Log in to your account</li>
-        <li>Create your first company</li>
-        <li>Set up tracking numbers</li>
-        <li>Start tracking calls!</li>
-      </ol>
+            <!-- Body -->
+            <tr>
+              <td style="padding:24px; font-family:Arial, Helvetica, sans-serif; color:#111827;">
+                <h2 style="Margin:0 0 12px 0; font-size:18px; line-height:24px; color:#111827;">
+                  Hi ${data.firstName}! 👋
+                </h2>
+                <p style="Margin:0 0 16px 0; font-size:14px; line-height:20px; color:#374151;">
+                  Your account has been successfully created. You're now ready to start tracking calls and optimizing your marketing!
+                </p>
 
-      <a href="${this.frontendUrl}/login" class="button">Login to Your Account</a>
-    </div>
-  </div>
-</body>
+                <!-- Credentials box -->
+                <table role="presentation" width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color:#ffffff; border:1px solid #e5e7eb; border-radius:6px;">
+                  <tr>
+                    <td style="padding:16px; font-family:Arial, Helvetica, sans-serif; color:#111827;">
+                      <h3 style="Margin:0 0 8px 0; font-size:16px; line-height:22px; color:#111827;">Your Login Credentials:</h3>
+                      <p style="Margin:0; font-size:14px; line-height:20px; color:#374151;">
+                        <strong>Email:</strong> ${data.email}<br>
+                        <strong>Password:</strong> ${data.password}
+                      </p>
+                    </td>
+                  </tr>
+                </table>
+
+                <!-- Steps -->
+                <h3 style="Margin:16px 0 8px 0; font-size:16px; line-height:22px; color:#111827;">Next Steps:</h3>
+                <ol style="Margin:0 0 16px 20px; padding:0; font-size:14px; line-height:20px; color:#374151;">
+                  <li>Log in to your account</li>
+                  <li>Create your first company</li>
+                  <li>Set up tracking numbers</li>
+                  <li>Start tracking calls!</li>
+                </ol>
+
+                <!-- Button (bulletproof) -->
+                <table role="presentation" border="0" cellspacing="0" cellpadding="0" style="Margin:0 0 8px 0;">
+                  <tr>
+                    <td>
+                      <a href="${this.frontendUrl}/login"
+                         style="display:inline-block; background-color:#4F46E5; color:#ffffff; text-decoration:none; font-family:Arial, Helvetica, sans-serif; font-size:14px; line-height:20px; padding:12px 24px; border-radius:4px;">
+                        Login to Your Account
+                      </a>
+                    </td>
+                  </tr>
+                </table>
+
+                <!-- Plain link fallback -->
+                <p style="Margin:8px 0 0 0; font-size:12px; line-height:18px; color:#6b7280;">
+                  Or copy and paste this URL into your browser:<br>
+                  <a href="${this.frontendUrl}/login" style="color:#4F46E5; text-decoration:underline;">${this.frontendUrl}/login</a>
+                </p>
+              </td>
+            </tr>
+
+          </table>
+        </td>
+      </tr>
+    </table>
+  </body>
 </html>
+
     `.trim();
 
     return this.sendEmail({

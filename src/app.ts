@@ -61,6 +61,7 @@ const corsOptions = {
       'http://localhost:3000',
       'http://localhost:3001',
       'http://localhost:8080',
+      '.ngrok-free.app',
       
       // Firebase hosting
       'https://superior-call-track.web.app',
@@ -70,8 +71,8 @@ const corsOptions = {
       'https://f04de7477bc3.ngrok-free.app',
       'https://0c6f6b3d8a66.ngrok-free.app',
       'https://3b941be804d3.ngrok-free.app',
-      'https://2b211813b378.ngrok-free.app',
-      'https://e1686d38c0ea.ngrok-free.app ',
+      'https://5220e6f242c6.ngrok-free.app',
+      'https://56a9582cc25b.ngrok-free.app ',
       
       // Environment variables
       process.env.BASE_URL,
